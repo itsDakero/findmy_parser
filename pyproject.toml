@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "findmy-parser"
+version = "0.1.0"
+description = "Forensic parser for Apple Find My artifacts (fmipcore cache + searchpartyd beacon location history) from iOS full filesystem extractions"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "findmy_parser contributors" }]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Security",
+]
+dependencies = []
+
+[project.scripts]
+findmy-parser = "findmy_parser.cli:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[tool.setuptools.packages.find]
+include = ["findmy_parser*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
