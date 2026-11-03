@@ -18,16 +18,28 @@ as unconfirmed convenience fields, not a verified schema.
 
 Only `identifier` is treated as load-bearing, per the task's background
 ("Each entry has an identifier (a UUID) ...").
+
+Real-world fmipcore `.data` files have been observed to be NSKeyedArchiver-
+wrapped bplists rather than a plain plist/JSON structure - `plistlib` alone
+parses the raw `$objects`/`$top` table but doesn't dereference it or
+reassemble NSDictionary/NSArray/NSDate from their archived form. Detected
+via the `$archiver` key and decoded with the vendored `ccl_bplist` (see
+`findmy_parser/_vendor/NOTICE.md`) before the field-name guessing above
+ever runs.
 """
 
 from __future__ import annotations
 
+import io
 import json
 import plistlib
 from pathlib import Path
 from typing import Any, Optional
 
+from ._vendor import ccl_bplist
 from .models import Tracker
+
+_NSKEYEDARCHIVER_MARKERS = ("NSKeyedArchiver", "NRKeyedArchiver")
 from .sniff import detect_format
 
 # Maps a known fmipcore cache filename to the Tracker.source_kind it
@@ -48,14 +60,25 @@ FILENAME_SOURCE_KIND = {
 # locations, family members, the account owner) are not beacon-bearing.
 LOCATABLE_SOURCE_KINDS = frozenset({"item", "device"})
 
+# identifier/name/serialNumber/location/productType confirmed against a
+# real Items.data entry (7-entry top-level list); emoji is not among that
+# entry's keys (kept as a candidate anyway - preserved via `raw` either way).
 _IDENTIFIER_KEYS = ("identifier",)
 _NAME_KEYS = ("name",)
 _EMOJI_KEYS = ("emoji",)
 _SERIAL_KEYS = ("serialNumber", "serialNo", "serial")
-_MODEL_KEYS = ("model", "modelName", "productType", "deviceModel", "modelDisplayName")
 _LOCATION_KEYS = ("location",)
 _LAT_KEYS = ("latitude", "lat")
 _LON_KEYS = ("longitude", "lon", "lng")
+
+# The model name is nested three levels deep - productType.productInformation.modelName -
+# not a flat string field (confirmed against real data). "model"/"deviceModel"/
+# "modelDisplayName" are kept as flat fallbacks for schemas that don't nest it
+# this way (e.g. an unconfirmed possible difference in Devices.data).
+_PRODUCT_TYPE_KEYS = ("productType",)
+_PRODUCT_INFORMATION_KEYS = ("productInformation",)
+_MODEL_NAME_KEYS = ("modelName",)
+_FLAT_MODEL_FALLBACK_KEYS = ("model", "deviceModel", "modelDisplayName")
 
 
 class InventoryParseError(ValueError):
@@ -67,22 +90,21 @@ def is_fmipcore_filename(name: str) -> bool:
 
     Used by discovery.py to recognise these files by name anywhere under
     the input root (PA exports may not preserve the original directory
-    layout). Matches the exact known names case-insensitively, plus any
-    "*.data" file as a fallback for unlisted/renamed variants.
+    layout, and confirmed against real exports commonly append a suffix,
+    e.g. "Devices.data.decrypted" rather than "Devices.data" exactly - so
+    this matches a known name as a *substring*, not just an exact name or
+    a ".data" suffix, mirroring how .record files are matched).
     """
-    if name in FILENAME_SOURCE_KIND:
-        return True
     lowered = name.lower()
-    if lowered in {k.lower() for k in FILENAME_SOURCE_KIND}:
+    if any(known_name.lower() in lowered for known_name in FILENAME_SOURCE_KIND):
         return True
-    return lowered.endswith(".data")
+    return ".data" in lowered
 
 
 def _source_kind_for_filename(name: str) -> str:
-    if name in FILENAME_SOURCE_KIND:
-        return FILENAME_SOURCE_KIND[name]
+    lowered = name.lower()
     for known_name, kind in FILENAME_SOURCE_KIND.items():
-        if name.lower() == known_name.lower():
+        if known_name.lower() in lowered:
             return kind
     stem = Path(name).stem
     return stem.lower() if stem else "unknown"
@@ -91,11 +113,22 @@ def _source_kind_for_filename(name: str) -> str:
 def parse_inventory_bytes(data: bytes, *, source_file: str) -> list[Tracker]:
     """Parse one fmipcore `.data` file's raw bytes into zero or more Trackers."""
     fmt = detect_format(data)
-    if fmt in ("bplist", "xml_plist"):
+    if fmt == "bplist":
+        payload = _load_bplist_payload(data, source_file)
+    elif fmt == "xml_plist":
         try:
             payload = plistlib.loads(data)
         except Exception as exc:
             raise InventoryParseError(f"{source_file}: could not parse plist: {exc}") from exc
+        if isinstance(payload, dict) and payload.get("$archiver") in _NSKEYEDARCHIVER_MARKERS:
+            # ccl_bplist only reads the binary bplist container format, so
+            # an XML-format NSKeyedArchiver can't be decoded here - fail
+            # loudly rather than silently returning the raw $objects/$top
+            # wrapper, which _extract_entries() would misread as empty.
+            raise InventoryParseError(
+                f"{source_file}: NSKeyedArchiver-wrapped XML plist is not supported "
+                "(only the binary bplist form is)"
+            )
     elif fmt == "json":
         try:
             payload = json.loads(data)
@@ -121,6 +154,34 @@ def parse_inventory_file(path: Path) -> list[Tracker]:
     """Read and parse a single fmipcore inventory file from disk (read-only)."""
     data = path.read_bytes()
     return parse_inventory_bytes(data, source_file=str(path))
+
+
+def _load_bplist_payload(data: bytes, source_file: str) -> Any:
+    """Parse binary plist bytes, transparently decoding an NSKeyedArchiver wrapper.
+
+    `plistlib` alone is used first purely to detect the `$archiver` marker
+    cheaply (it happily parses the raw, un-dereferenced structure without
+    error). If present, the same bytes are re-parsed from scratch with
+    ccl_bplist, whose UID/`$objects` representation is not compatible with
+    plistlib's - the two parsers can't be mixed, so this re-parses rather
+    than reusing the first pass's result.
+    """
+    try:
+        payload = plistlib.loads(data)
+    except Exception as exc:
+        raise InventoryParseError(f"{source_file}: could not parse plist: {exc}") from exc
+
+    if not (isinstance(payload, dict) and payload.get("$archiver") in _NSKEYEDARCHIVER_MARKERS):
+        return payload
+
+    try:
+        ccl_bplist.set_object_converter(ccl_bplist.NSKeyedArchiver_common_objects_convertor)
+        raw = ccl_bplist.load(io.BytesIO(data))
+        return ccl_bplist.deserialise_NsKeyedArchiver(raw)
+    except Exception as exc:
+        raise InventoryParseError(
+            f"{source_file}: detected NSKeyedArchiver wrapper but could not decode it: {exc}"
+        ) from exc
 
 
 def _extract_entries(payload: Any) -> list[dict]:
@@ -160,13 +221,25 @@ def _tracker_from_entry(entry: dict, *, source_kind: str, source_file: str) -> O
         name=_first(entry, _NAME_KEYS),
         emoji=_first(entry, _EMOJI_KEYS),
         serial_number=_first(entry, _SERIAL_KEYS),
-        model=_first(entry, _MODEL_KEYS),
+        model=_extract_model(entry),
         last_known_latitude=lat,
         last_known_longitude=lon,
         source_kind=source_kind,
         source_file=source_file,
         raw=entry,
     )
+
+
+def _extract_model(entry: dict) -> Optional[str]:
+    """Model name lives at productType.productInformation.modelName."""
+    product_type = _first(entry, _PRODUCT_TYPE_KEYS)
+    if isinstance(product_type, dict):
+        product_information = _first(product_type, _PRODUCT_INFORMATION_KEYS)
+        if isinstance(product_information, dict):
+            model_name = _first(product_information, _MODEL_NAME_KEYS)
+            if model_name:
+                return str(model_name)
+    return _first(entry, _FLAT_MODEL_FALLBACK_KEYS)
 
 
 def _first(entry: dict, keys: tuple[str, ...]) -> Any:

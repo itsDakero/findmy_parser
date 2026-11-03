@@ -157,13 +157,15 @@ def main() -> None:
         (SEARCHPARTYD / sibling / ".keep").write_text("")
 
     # --- fmipcore inventory: Items.data (JSON), Devices.data (JSON) ---
+    # Shape confirmed against real Items.data: model name is nested at
+    # productType.productInformation.modelName, not a flat string field.
     items_data = [
         {
             "identifier": TRACKER_A,
             "name": "Backpack AirTag",
             "emoji": "\U0001f392",
             "serialNumber": "AT-SN-0001",
-            "productType": "AirTag",
+            "productType": {"productInformation": {"modelName": "AirTag"}},
         }
     ]
     write_json(FMIPCORE / "Items.data", items_data)

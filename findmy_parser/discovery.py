@@ -15,6 +15,7 @@ print it.
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -69,6 +70,10 @@ class DiscoveryLog:
     inventory_files_found: list[str] = field(default_factory=list)
     inventory_files_parsed: list[str] = field(default_factory=list)
     inventory_files_skipped: list[tuple[str, str]] = field(default_factory=list)
+    walk_errors: list[tuple[str, str]] = field(default_factory=list)
+    """Directories/entries the recursive scan itself couldn't read (permission
+    errors, broken symlinks, Windows long-path failures, ...) - the walk skips
+    past these rather than aborting the whole run."""
 
 
 @dataclass
@@ -85,42 +90,62 @@ class DiscoveryResult:
         return out
 
 
-def discover_files(root: Path) -> tuple[list[Path], list[Path]]:
+def discover_files(root: Path) -> tuple[list[Path], list[Path], list[tuple[str, str]]]:
     """Recursively find `.record` files and fmipcore inventory files under root.
 
     `root` may be a single file, in which case it's classified on its own.
     Never writes to `root` - a plain recursive read-only walk.
+
+    A full filesystem extraction is full of directories/entries the
+    process can't read (permission-restricted paths, broken symlinks,
+    Windows paths over the 260-character limit, ...). Uses `os.walk`
+    with an `onerror` callback rather than `Path.rglob` specifically so
+    one unreadable directory is logged and skipped instead of aborting
+    the entire scan.
     """
     if root.is_file():
         records = [root] if _looks_like_record(root.name) else []
         inventory = [root] if is_fmipcore_filename(root.name) else []
-        return records, inventory
+        return records, inventory, []
 
     records = []
     inventory = []
-    for path in root.rglob("*"):
-        if not path.is_file():
-            continue
-        if _looks_like_record(path.name):
-            records.append(path)
-        elif is_fmipcore_filename(path.name):
-            inventory.append(path)
-    return sorted(records), sorted(inventory)
+    walk_errors: list[tuple[str, str]] = []
+
+    def _on_walk_error(exc: OSError) -> None:
+        walk_errors.append((getattr(exc, "filename", None) or str(exc), str(exc)))
+
+    for dirpath, _dirnames, filenames in os.walk(root, onerror=_on_walk_error, followlinks=False):
+        for name in filenames:
+            path = Path(dirpath) / name
+            try:
+                is_file = path.is_file()
+            except OSError as exc:
+                walk_errors.append((str(path), str(exc)))
+                continue
+            if not is_file:
+                continue
+            if _looks_like_record(name):
+                records.append(path)
+            elif is_fmipcore_filename(name):
+                inventory.append(path)
+    return sorted(records), sorted(inventory), walk_errors
 
 
 def discover(root: Path) -> DiscoveryResult:
     """Discover, parse, deduplicate, and correlate everything under root."""
     root = Path(root)
     log = DiscoveryLog()
-    record_paths, inventory_paths = discover_files(root)
+    record_paths, inventory_paths, walk_errors = discover_files(root)
     log.record_files_found = [str(p) for p in record_paths]
     log.inventory_files_found = [str(p) for p in inventory_paths]
+    log.walk_errors = walk_errors
 
     trackers: dict[str, Tracker] = {}
     for path in inventory_paths:
         try:
             parsed = parse_inventory_file(path)
-        except InventoryParseError as exc:
+        except (InventoryParseError, OSError) as exc:
             log.inventory_files_skipped.append((str(path), str(exc)))
             continue
         log.inventory_files_parsed.append(str(path))
@@ -137,7 +162,7 @@ def discover(root: Path) -> DiscoveryResult:
         hint = resolve_tracker_uuid(path)
         try:
             fix = parse_record_file(path, tracker_id_hint=hint)
-        except RecordParseError as exc:
+        except (RecordParseError, OSError) as exc:
             log.record_files_skipped.append((str(path), str(exc)))
             continue
         log.record_files_parsed.append(str(path))

@@ -45,13 +45,13 @@ def test_resolve_tracker_uuid_returns_none_when_no_uuid_ancestor():
 
 
 def test_discover_files_finds_dotrecord_and_dotrecordplist():
-    records, inventory = discover_files(REAL_SAMPLE_ROOT)
+    records, inventory, walk_errors = discover_files(REAL_SAMPLE_ROOT)
     assert REAL_SAMPLE_RECORD in records
     assert inventory == []
 
 
 def test_discover_files_over_synthetic_root():
-    records, inventory = discover_files(SYNTHETIC_ROOT)
+    records, inventory, walk_errors = discover_files(SYNTHETIC_ROOT)
     record_names = {p.name for p in records}
     assert "fix1.record" in record_names
     assert "fix1_dup.record" in record_names
@@ -67,7 +67,7 @@ def test_discover_files_over_synthetic_root():
 
 
 def test_discover_single_file_input():
-    records, inventory = discover_files(REAL_SAMPLE_RECORD)
+    records, inventory, walk_errors = discover_files(REAL_SAMPLE_RECORD)
     assert records == [REAL_SAMPLE_RECORD]
     assert inventory == []
 
@@ -122,3 +122,67 @@ def test_all_fixes_flat_ordering_is_tracker_major():
 
 def test_unresolved_tracker_id_constant_used_when_no_id_available():
     assert UNRESOLVED_TRACKER_ID == "UNKNOWN"
+
+
+def test_discover_files_finds_pa_decrypted_suffixed_inventory(tmp_path):
+    (tmp_path / "Devices.data.decrypted").write_bytes(b'{"identifier": "X1", "name": "Test"}')
+    records, inventory, _walk_errors = discover_files(tmp_path)
+    assert len(inventory) == 1
+    assert inventory[0].name == "Devices.data.decrypted"
+
+
+def test_unreadable_record_file_is_skipped_not_fatal(monkeypatch, tmp_path):
+    """A permission error (or Windows long-path failure, locked file, ...)
+    reading one file must not crash the whole run - see discover()'s
+    (RecordParseError, OSError) catch."""
+    tracker_dir = tmp_path / "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA"
+    tracker_dir.mkdir()
+    unreadable = tracker_dir / "locked.record"
+    unreadable.write_bytes(b"irrelevant - read_bytes is monkeypatched to fail below")
+
+    from pathlib import Path as PathClass
+
+    original_read_bytes = PathClass.read_bytes
+
+    def flaky_read_bytes(self, *args, **kwargs):
+        if self == unreadable:
+            raise PermissionError("simulated: Access is denied")
+        return original_read_bytes(self, *args, **kwargs)
+
+    monkeypatch.setattr(PathClass, "read_bytes", flaky_read_bytes)
+
+    result = discover(tmp_path)
+    assert any("locked.record" in p for p, _ in result.log.record_files_skipped)
+    assert any("Access is denied" in reason for _, reason in result.log.record_files_skipped)
+
+
+def test_walk_permission_error_is_recorded_not_fatal(monkeypatch, tmp_path):
+    (tmp_path / "ok.record").write_bytes(b"irrelevant")
+
+    from findmy_parser import discovery
+
+    real_walk = discovery.os.walk
+
+    def flaky_walk(top, onerror=None, **kwargs):
+        if onerror is not None:
+            onerror(PermissionError("simulated: protected system directory"))
+        yield from real_walk(top, onerror=onerror, **kwargs)
+
+    monkeypatch.setattr(discovery.os, "walk", flaky_walk)
+
+    records, inventory, walk_errors = discovery.discover_files(tmp_path)
+    assert len(walk_errors) == 1
+    assert "protected system directory" in walk_errors[0][1]
+    # The walk still finds files despite the simulated error elsewhere.
+    assert any(p.name == "ok.record" for p in records)
+
+
+def test_discover_surfaces_walk_errors_in_log(monkeypatch, tmp_path):
+    from findmy_parser import discovery
+
+    def fake_discover_files(root):
+        return [], [], [("/some/protected/dir", "PermissionError: denied")]
+
+    monkeypatch.setattr(discovery, "discover_files", fake_discover_files)
+    result = discovery.discover(tmp_path)
+    assert result.log.walk_errors == [("/some/protected/dir", "PermissionError: denied")]

@@ -63,6 +63,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def _configure_logging(verbose: bool) -> None:
+    # A Windows `cmd` console is frequently not UTF-8 by default, and
+    # tracker names/paths can contain non-ASCII characters (AirTags
+    # support emoji names). Without this, logging such a message crashes
+    # the whole run with UnicodeEncodeError instead of just that message
+    # looking slightly odd.
+    try:
+        sys.stderr.reconfigure(errors="backslashreplace")
+    except (AttributeError, ValueError):
+        pass
+
     logging.basicConfig(
         level=logging.DEBUG if verbose else logging.INFO,
         format="%(levelname)s: %(message)s",
@@ -79,8 +89,13 @@ def _run_log_text(result: DiscoveryResult) -> str:
         f"inventory files found: {len(result.log.inventory_files_found)}",
         f"inventory files parsed: {len(result.log.inventory_files_parsed)}",
         f"inventory files skipped: {len(result.log.inventory_files_skipped)}",
+        f"directories/entries unreadable during scan: {len(result.log.walk_errors)}",
         "",
     ]
+    if result.log.walk_errors:
+        lines.append("unreadable during scan (path: reason):")
+        lines.extend(f"  {path}: {reason}" for path, reason in result.log.walk_errors)
+        lines.append("")
     if result.log.record_files_skipped:
         lines.append("record files skipped (path: reason):")
         lines.extend(f"  {path}: {reason}" for path, reason in result.log.record_files_skipped)
@@ -109,6 +124,8 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
     logger.info("scanning %s (read-only)", root)
     result = discover(root)
 
+    for path, reason in result.log.walk_errors:
+        logger.warning("could not read during scan %s: %s", path, reason)
     for path, reason in result.log.record_files_skipped:
         logger.warning("skipped .record file %s: %s", path, reason)
     for path, reason in result.log.inventory_files_skipped:

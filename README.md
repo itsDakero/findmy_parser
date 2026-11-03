@@ -76,15 +76,42 @@ the original raw value alongside it in the output.
 
 ## Status / confirmed schema
 
-Only `.record` fields have been verified against real fixture data
-(`tests/fixtures/`): `associatedBeacon`, `identifier`, `latitude`,
-`longitude`, `horizontalAccuracy`, `timestamp`, `scanDate`,
-`locationSource`, `cloudKitMetadata`. `confidence` and `status` are
-mentioned as plausible fields elsewhere but are not confirmed — they are
-preserved verbatim if present, never assumed. `Items.data`/`Devices.data`
-field names are best-effort (no real fixture was available to verify
-them against); see `findmy_parser/fmipcore.py` for the exact fallback
-key list used.
+`.record` fields confirmed against real fixture data (`tests/fixtures/`):
+`associatedBeacon`, `identifier`, `latitude`, `longitude`,
+`horizontalAccuracy`, `timestamp`, `scanDate`, `locationSource`,
+`cloudKitMetadata`. `confidence` and `status` are mentioned as plausible
+fields elsewhere but are not confirmed — preserved verbatim if present,
+never assumed.
+
+`Items.data` fields confirmed against a real 7-entry sample: `identifier`,
+`name`, `serialNumber`, `location`, and critically `productType` — which
+is **not** a flat model-name string, it's nested:
+`productType.productInformation.modelName`. Also present but not yet
+mapped to a `Tracker` field: `address`, `batteryStatus`, `capabilities`,
+`crowdSourcedLocation`, `groupIdentifier`, `productIdentifier`,
+`isAppleAudioAccessory`, `isAppleItem`, `isFirmwareUpdateMandatory`,
+`lostModeMetadata`, `owner`, `partInfo`, `role`, `systemVersion`,
+`safeLocations`, `rangeDistanceInMeters` (all preserved on `Tracker.raw`).
+`emoji` was not among that sample's keys. `Devices.data`'s exact schema
+is still unconfirmed — its field mapping keeps a flat-key fallback
+(`model`/`deviceModel`/`modelDisplayName`) as a guess; see
+`findmy_parser/fmipcore.py` for the exact key lists used.
+
+`Items.data`/`Devices.data` are also commonly **NSKeyedArchiver**-wrapped
+bplists rather than a plain plist/JSON structure (confirmed against real
+device data) — `plistlib` alone parses the raw `$objects`/`$top` table but
+doesn't dereference it. This is detected automatically and decoded with
+the vendored `ccl_bplist` (see below) before the field-name matching
+above runs.
+
+## Third-party code
+
+`findmy_parser/_vendor/ccl_bplist.py` is [ccl_bplist](https://github.com/cclgroupltd/ccl-bplist)
+by Alex Caithness / CCL Forensics, BSD 3-Clause licensed (full text in the
+file itself). It isn't published on PyPI, so it's vendored unmodified
+rather than declared as a pip dependency — this keeps the tool
+dependency-free and installable offline. See
+`findmy_parser/_vendor/NOTICE.md` for details.
 
 ## Development
 
