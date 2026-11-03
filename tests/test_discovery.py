@@ -190,3 +190,30 @@ def test_discover_surfaces_walk_errors_in_log(monkeypatch, tmp_path):
     monkeypatch.setattr(discovery, "discover_files", fake_discover_files)
     result = discovery.discover(tmp_path)
     assert result.log.walk_errors == [("/some/protected/dir", "PermissionError: denied")]
+
+
+def test_tracker_correlates_via_alt_identifier(tmp_path):
+    """A beacon folder named after a Devices.data baUUID must still pick up
+    that device's name, even though its primary identifier differs."""
+    import json
+    import plistlib
+
+    beacon_uuid = "BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB"
+    fmipcore = tmp_path / "Library/Caches/com.apple.findmy.fmipcore"
+    fmipcore.mkdir(parents=True)
+    (fmipcore / "Devices.data").write_text(
+        json.dumps([{"identifier": "SOME-OTHER-ID", "baUUID": beacon_uuid, "name": "Dan's iPhone"}])
+    )
+
+    record_dir = tmp_path / "BeaconEstimatedLocation" / beacon_uuid
+    record_dir.mkdir(parents=True)
+    with open(record_dir / "fix.record", "wb") as fp:
+        plistlib.dump(
+            {"associatedBeacon": beacon_uuid, "latitude": 1.0, "longitude": 2.0},
+            fp,
+            fmt=plistlib.FMT_BINARY,
+        )
+
+    result = discover(tmp_path)
+    assert result.trackers[beacon_uuid].name == "Dan's iPhone"
+    assert result.log.unmatched_tracker_ids == []

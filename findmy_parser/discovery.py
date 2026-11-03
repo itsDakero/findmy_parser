@@ -174,6 +174,16 @@ def discover(root: Path) -> DiscoveryResult:
             if tracker.name:
                 log.name_sources.setdefault(tracker.identifier, f"{tracker.source_kind}: {path}")
 
+            # A Devices.data entry's beacon folder may be named after its
+            # baUUID rather than its identifier, so index the same tracker
+            # under every ID it carries. Aliases never displace a tracker
+            # already registered under that ID in its own right.
+            for alias in tracker.alt_identifiers:
+                trackers.setdefault(alias, tracker)
+                log.inventory_identifiers.append(alias)
+                if tracker.name:
+                    log.name_sources.setdefault(alias, f"{tracker.source_kind} (via alias): {path}")
+
     fixes_by_tracker: dict[str, list[LocationFix]] = {}
     seen_hashes: dict[str, str] = {}
     metadata_by_tracker: dict[str, BeaconMetadata] = {}

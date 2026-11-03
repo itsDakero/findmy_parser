@@ -63,7 +63,11 @@ LOCATABLE_SOURCE_KINDS = frozenset({"item", "device"})
 # identifier/name/serialNumber/location/productType confirmed against a
 # real Items.data entry (7-entry top-level list); emoji is not among that
 # entry's keys (kept as a candidate anyway - preserved via `raw` either way).
-_IDENTIFIER_KEYS = ("identifier",)
+# Items.data keys its entries by `identifier`; Devices.data uses `baUUID`
+# for the beacon-associated UUID (iLEAPP's findMyCaches.py treats the two
+# as one ID space). Both are collected so correlation can match whichever
+# one a BeaconEstimatedLocation folder is actually named after.
+_IDENTIFIER_KEYS = ("identifier", "baUUID")
 _NAME_KEYS = ("name",)
 _EMOJI_KEYS = ("emoji",)
 _SERIAL_KEYS = ("serialNumber", "serialNo", "serial")
@@ -210,6 +214,14 @@ def _tracker_from_entry(entry: dict, *, source_kind: str, source_file: str) -> O
     if not identifier:
         return None
 
+    # Every other ID this entry carries, so a beacon folder keyed by the
+    # non-primary one still correlates.
+    alt_identifiers = tuple(
+        str(entry[key])
+        for key in _IDENTIFIER_KEYS
+        if key in entry and entry[key] is not None and str(entry[key]) != str(identifier)
+    )
+
     location = _first(entry, _LOCATION_KEYS)
     lat = lon = None
     if isinstance(location, dict):
@@ -218,6 +230,7 @@ def _tracker_from_entry(entry: dict, *, source_kind: str, source_file: str) -> O
 
     return Tracker(
         identifier=str(identifier),
+        alt_identifiers=alt_identifiers,
         name=_first(entry, _NAME_KEYS),
         emoji=_first(entry, _EMOJI_KEYS),
         serial_number=_first(entry, _SERIAL_KEYS),

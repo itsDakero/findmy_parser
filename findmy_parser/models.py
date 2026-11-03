@@ -21,6 +21,14 @@ class Tracker:
     """
 
     identifier: str
+    alt_identifiers: tuple[str, ...] = ()
+    """Other IDs this entry carries that a beacon folder might be keyed by.
+
+    Devices.data uses `baUUID` for the beacon-associated UUID while
+    Items.data uses `identifier`; iLEAPP's own findMyCaches.py treats the
+    two as one ID space. Correlation indexes a tracker under all of them,
+    since which one matches a BeaconEstimatedLocation folder varies.
+    """
     name: Optional[str] = None
     emoji: Optional[str] = None
     serial_number: Optional[str] = None

@@ -1,49 +1,54 @@
 __artifacts_v2__ = {
     "findMyBeaconLocations": {
         "name": "Find My Beacon Estimated Locations",
-        "description": (
-            "Location history for AirTags and other Find My-compatible trackers/"
-            "devices, parsed from searchpartyd's "
-            "BeaconEstimatedLocation/<UUID>/*.record files. Each .record file is "
-            "one location fix (latitude, longitude, horizontal accuracy, "
-            "timestamp); the .record files under one UUID folder form that "
-            "tracker's location history. Complements findMy.py, which currently "
-            "only parses FMIPAccounts.plist and does not touch this data or "
-            "fmipcore Items.data/Devices.data - this module does not duplicate "
-            "or overlap with it."
-        ),
-        "author": "@findmy_parser",
-        "creation_date": "2026-08-12",
-        "last_update_date": "2026-08-12",
+        "description": "Estimated location records for Find My beacons, from the searchpartyd "
+                       "BeaconEstimatedLocation cache. One row per .record file; the records "
+                       "under one UUID folder form that beacon's location history",
+        "author": "@itsDakero, Claude",
+        "creation_date": "2026-11-03",
+        "last_update_date": "2026-11-03",
         "requirements": "none",
-        "category": "Locations",
-        "notes": (
-            "Physical Analyzer exports can wrap the decrypted .record file in "
-            "extra, unpredictable subfolders below the owning UUID folder (the "
-            "confirmed sample fixture sits two levels down, e.g. "
-            "BeaconEstimatedLocation/<uuid>/<uuid>_1.record/<uuid>.record.plist), "
-            "so the paths below cover a few extra wildcard depths; widen further "
-            "if a real export nests deeper. The owning tracker UUID is resolved "
-            "by walking up the file's path for the nearest UUID-shaped folder "
-            "name rather than assuming a fixed parent, and by shape "
-            "(8-4-4-4-12 groups) rather than strict hex, since real (redacted) "
-            "sample data can contain non-hex placeholder characters in an "
-            "otherwise UUID-shaped folder name. Only associatedBeacon/"
-            "identifier, latitude, longitude, horizontalAccuracy, timestamp, and "
-            "scanDate are confirmed against real .record fixture data; fields "
-            "sometimes mentioned elsewhere (confidence, status) are not assumed "
-            "and are simply not extracted. Per current ilapfuncs.py, there is no "
-            "context-provided timezone offset for context-based modules and "
-            "convert_utc_human_to_timezone has no live caller in the codebase, "
-            "so timestamps are reported as converted UTC datetimes rather than "
-            "shifted into a report timezone (matches current module practice)."
-        ),
-        "paths": (
-            "*/Library/Caches/com.apple.icloud.searchpartyd/BeaconEstimatedLocation/*/*.record",
-            "*/Library/Caches/com.apple.icloud.searchpartyd/BeaconEstimatedLocation/*/*/*.record",
-            "*/Library/Caches/com.apple.icloud.searchpartyd/BeaconEstimatedLocation/*/*/*/*.record",
-            "*/Library/Caches/com.apple.icloud.searchpartyd/BeaconEstimatedLocation/*/*/*/*/*.record",
-        ),
+        "category": "Find My",
+        "notes": "Complements rather than duplicates the fmipcore artifacts: findMyItems.py and "
+                 "findMyCaches.py read Items.data and Devices.data, whose location and "
+                 "crowdSourcedLocation dictionaries hold one current position per tracker. This "
+                 "artifact reads a different cache, com.apple.icloud.searchpartyd/"
+                 "BeaconEstimatedLocation, which holds many timestamped fixes per beacon. No "
+                 "existing module reads it. "
+                 "Device UUID is taken from the record's own associatedBeacon, or identifier, and "
+                 "where neither is present from the nearest UUID-shaped folder in the file's path. "
+                 "That folder is not assumed to be the immediate parent: a Cellebrite Physical "
+                 "Analyzer export observed on one device wrapped each record a further level down "
+                 "and renamed it, as BeaconEstimatedLocation/<uuid>/<uuid>_1.record/"
+                 "<uuid>.record.plist. The path below therefore ends *.record* rather than "
+                 "*.record, so that a .record.plist or .record.decrypted file is matched too, and "
+                 "a single * is enough for the depth because search_files.py matches with fnmatch, "
+                 "where * spans / characters. "
+                 "The folder name is matched by shape (8-4-4-4-12) rather than as valid hex, "
+                 "because the one sample record available carried a redacted group. "
+                 "Timestamp and Scan Date were native plist date values in that sample and are "
+                 "read with convert_plist_date_to_utc; a numeric value is read instead as Cocoa "
+                 "seconds below 978307200 and Unix seconds at or above it, which no sample "
+                 "confirmed. What each of the two times marks is not established. "
+                 "Only associatedBeacon, identifier, latitude, longitude, horizontalAccuracy, "
+                 "locationSource, timestamp and scanDate were present in that sample; "
+                 "locationSource is reported as stored and no public source defining its values "
+                 "was found. Fields named in other write-ups but absent from the sample "
+                 "(confidence, status) are not read. "
+                 "OwnedBeacons, SharedBeacons and BeaconNamingRecord are sibling folders whose "
+                 "files are also named *.record but describe the beacon rather than a position; "
+                 "the path below does not match them, so they are not read here and cannot appear "
+                 "as positionless rows. Those folders are where a beacon's friendly name is "
+                 "expected to live, keyed by the same UUID, but their field names are not "
+                 "established and no name is joined here. "
+                 "On-device these caches are encrypted: records whose top level holds an "
+                 "encryptedData and a signature key are logged and skipped, as findMyCaches.py "
+                 "does for the fmipcore files, so 0 rows is not evidence that nothing was "
+                 "recorded. "
+                 "sample_data is empty because this module has not been run against the test "
+                 "image corpus; the one record it was developed against was a single file "
+                 "supplied separately, not a corpus image.",
+        "paths": ('*/Caches/com.apple.icloud.searchpartyd/BeaconEstimatedLocation/*.record*',),
         "output_types": ["html", "tsv", "timeline", "kml", "lava"],
         "artifact_icon": "map-pin",
         "sample_data": {},
@@ -52,105 +57,89 @@ __artifacts_v2__ = {
 
 import re
 
-from scripts.ilapfuncs import (
-    artifact_processor,
-    convert_cocoa_core_data_ts_to_utc,
-    convert_plist_date_to_utc,
-    convert_unix_ts_to_utc,
-    get_plist_file_content,
-    logfunc,
-)
-
-# Matches a UUID-shaped path component (8-4-4-4-12 groups) by shape, not
-# strict hex validity - see the "notes" field above for why.
-_UUID_SHAPE_RE = re.compile(
-    r"^[0-9A-Za-z]{8}-[0-9A-Za-z]{4}-[0-9A-Za-z]{4}-[0-9A-Za-z]{4}-[0-9A-Za-z]{12}$"
-)
-
-# The largest plausible Cocoa/Unix *seconds* epoch value for this artifact
-# type is far below this; the smallest plausible *milliseconds* value is
-# far above it. Mirrors findmy_parser.timestamps._SECONDS_MS_BOUNDARY.
-_SECONDS_MS_BOUNDARY = 1e11
-# Seconds between the Unix epoch (1970-01-01) and the Cocoa epoch (2001-01-01).
-_COCOA_EPOCH_UNIX_OFFSET_SECONDS = 978_307_200
+from scripts.ilapfuncs import (artifact_processor, convert_cocoa_core_data_ts_to_utc,
+                               convert_plist_date_to_utc, convert_unix_ts_to_utc,
+                               get_plist_file_content, logfunc)
 
 
-def _resolve_tracker_uuid(file_path):
-    """Walk up from a .record file's path and return the owning tracker UUID.
+# A UUID-shaped path component, matched by shape rather than as valid hex:
+# see the note on redacted groups in __artifacts_v2__.
+UUID_SHAPE = re.compile(r'^[0-9A-Za-z]{8}-[0-9A-Za-z]{4}-[0-9A-Za-z]{4}-'
+                        r'[0-9A-Za-z]{4}-[0-9A-Za-z]{12}$')
 
-    Physical Analyzer wraps the decrypted file in extra subfolders below
-    the true UUID folder, so the immediate parent is not assumed to be
-    it - every ancestor is checked, nearest first.
+# Seconds between the Unix epoch and the Cocoa epoch (2001-01-01). A
+# second-scale value below this is read as Cocoa, at or above it as Unix.
+COCOA_EPOCH_OFFSET = 978307200
+
+# Values at or above this are read as milliseconds: well above the largest
+# plausible second-scale value and well below the smallest millisecond one.
+MS_BOUNDARY = 1e11
+
+
+def _beacon_uuid(file_found):
+    """The owning beacon UUID: the nearest UUID-shaped folder above the file.
+
+    Physical Analyzer wrapping can put extra folders between the record and
+    its UUID folder, so the immediate parent is not assumed to be it.
     """
-    parts = file_path.replace("\\", "/").split("/")
+    parts = file_found.replace('\\', '/').split('/')
     for part in reversed(parts[:-1]):
-        if _UUID_SHAPE_RE.match(part):
+        if UUID_SHAPE.match(part):
             return part
-    return "UNKNOWN"
+    return ''
 
 
-def _convert_timestamp(value):
-    """Convert a .record timestamp field to a UTC datetime.
-
-    Native bplist date values (the only form confirmed against real
-    fixture data) go through convert_plist_date_to_utc(). Raw Cocoa/Unix
-    epoch numbers (not confirmed in real data, but handled defensively)
-    are scaled to seconds and routed to the matching ilapfuncs helper.
-    """
-    if value is None:
-        return None
-    if isinstance(value, bool):
-        return None
+def _ts(value):
+    """A record time to UTC. Blank where absent."""
+    if value is None or isinstance(value, bool):
+        return ''
     if isinstance(value, (int, float)):
-        seconds = value / 1000.0 if abs(value) >= _SECONDS_MS_BOUNDARY else value
-        if seconds < _COCOA_EPOCH_UNIX_OFFSET_SECONDS:
+        seconds = value / 1000.0 if abs(value) >= MS_BOUNDARY else value
+        if seconds < COCOA_EPOCH_OFFSET:
             return convert_cocoa_core_data_ts_to_utc(seconds)
         return convert_unix_ts_to_utc(seconds)
     return convert_plist_date_to_utc(value)
 
 
+def _is_encrypted(record):
+    """True where the record is still the on-device encrypted form."""
+    return 'encryptedData' in record and 'signature' in record
+
+
 @artifact_processor
 def findMyBeaconLocations(context):
-    data_headers = (
-        ("Timestamp", "datetime"),
-        "Device UUID",
-        "Latitude",
-        "Longitude",
-        "Horizontal Accuracy (m)",
-        "Location Source",
-        ("Scan Date", "datetime"),
-        "Source File",
-    )
+    data_headers = (('Timestamp', 'datetime'), 'Device UUID', 'Latitude', 'Longitude',
+                    'Horizontal Accuracy', 'locationSource (as stored)',
+                    ('Scan Date', 'datetime'), 'Record Identifier', 'Source File')
     data_list = []
-    parsed_relative_paths = []
+    sources = []
 
     for file_found in context.get_files_found():
         file_found = str(file_found)
-        if ".record" not in file_found.lower():
+        if '.record' not in file_found.lower():
             continue
 
-        pl = get_plist_file_content(file_found)
-        if not isinstance(pl, dict) or not pl:
-            logfunc(f"findMyBeaconLocations: could not parse as plist, skipping: {file_found}")
+        record = get_plist_file_content(file_found)
+        if not isinstance(record, dict) or not record:
+            logfunc(f'{file_found} could not be read as a plist; skipped')
+            continue
+        if _is_encrypted(record):
+            logfunc(f'{file_found} holds encryptedData and a signature; not read')
             continue
 
-        tracker_uuid = pl.get("associatedBeacon") or pl.get("identifier")
-        if not tracker_uuid:
-            tracker_uuid = _resolve_tracker_uuid(file_found)
+        uuid = record.get('associatedBeacon') or record.get('identifier') or _beacon_uuid(file_found)
+        relative = context.get_relative_path(file_found)
+        sources.append(relative)
 
-        data_list.append(
-            (
-                _convert_timestamp(pl.get("timestamp")),
-                tracker_uuid,
-                pl.get("latitude"),
-                pl.get("longitude"),
-                pl.get("horizontalAccuracy"),
-                pl.get("locationSource"),
-                _convert_timestamp(pl.get("scanDate")),
-                context.get_relative_path(file_found),
-            )
-        )
-        parsed_relative_paths.append(context.get_relative_path(file_found))
+        data_list.append((
+            _ts(record.get('timestamp')),
+            uuid,
+            record.get('latitude', ''),
+            record.get('longitude', ''),
+            record.get('horizontalAccuracy', ''),
+            record.get('locationSource', ''),
+            _ts(record.get('scanDate')),
+            record.get('identifier', ''),
+            relative))
 
-    source_path = "\n".join(parsed_relative_paths)
-    return data_headers, data_list, source_path
+    return data_headers, data_list, '\n'.join(sources)

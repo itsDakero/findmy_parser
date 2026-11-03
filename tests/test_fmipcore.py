@@ -230,3 +230,20 @@ def test_nskeyedarchiver_corrupted_archive_raises_inventoryparseerror():
     data = plistlib.dumps(structure, fmt=plistlib.FMT_BINARY)
     with pytest.raises(InventoryParseError, match="could not decode"):
         parse_inventory_bytes(data, source_file="Items.data")
+
+
+def test_devices_data_bauuid_collected_as_identifier():
+    """Devices.data keys the beacon-associated UUID as baUUID, not
+    identifier - iLEAPP's findMyCaches.py treats the two as one ID space."""
+    data = b'{"baUUID": "BEACON-UUID-1", "name": "Dan\'s iPhone", "id": "device-id-1"}'
+    trackers = parse_inventory_bytes(data, source_file="Devices.data")
+    assert trackers[0].identifier == "BEACON-UUID-1"
+    assert trackers[0].name == "Dan's iPhone"
+
+
+def test_both_identifier_and_bauuid_retained_as_aliases():
+    data = b'{"identifier": "ITEM-ID", "baUUID": "BEACON-UUID-2", "name": "Both IDs"}'
+    trackers = parse_inventory_bytes(data, source_file="Devices.data")
+    tracker = trackers[0]
+    assert tracker.identifier == "ITEM-ID"
+    assert tracker.alt_identifiers == ("BEACON-UUID-2",)

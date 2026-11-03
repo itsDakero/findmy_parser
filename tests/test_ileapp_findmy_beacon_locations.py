@@ -92,6 +92,8 @@ def test_artifacts_v2_dict_shape(findmy_module):
         assert key in entry
     assert isinstance(entry["paths"], tuple)
     assert "kml" in entry["output_types"]
+    assert entry["category"] == "Find My"
+    assert isinstance(entry["paths"], tuple)
     assert "timeline" in entry["output_types"]
 
 
@@ -103,15 +105,15 @@ def test_resolve_tracker_uuid_matches_pa_wrapped_real_fixture(findmy_module):
         / "2AE881AD-1171-461C-9AC0-C8991DB0284E.record.plist"
     )
     assert (
-        findmy_module._resolve_tracker_uuid(str(real))
+        findmy_module._beacon_uuid(str(real))
         == "DFC948EE-XXXX-4D3A-9E44-10B162BF9898"
     )
 
 
 def test_convert_timestamp_routes_by_magnitude(findmy_module):
-    assert findmy_module._convert_timestamp(None) is None
-    assert findmy_module._convert_timestamp(800000000.0) == ("cocoa", 800000000.0)
-    assert findmy_module._convert_timestamp(1780000100.0) == ("unix", 1780000100.0)
+    assert findmy_module._ts(None) == ""
+    assert findmy_module._ts(800000000.0) == ("cocoa", 800000000.0)
+    assert findmy_module._ts(1780000100.0) == ("unix", 1780000100.0)
 
 
 def test_end_to_end_over_synthetic_fixtures(findmy_module, logged_messages):
@@ -147,3 +149,64 @@ def test_falls_back_to_path_uuid_when_payload_lacks_identifier(findmy_module, mo
     context = FakeContext([BEACON_LOC / TRACKER_A / "fix2.record"])
     _, rows, _ = findmy_module.findMyBeaconLocations(context)
     assert rows[0][1] == TRACKER_A
+
+
+def test_encrypted_record_is_logged_and_skipped(findmy_module, logged_messages, monkeypatch):
+    """On-device these caches are encrypted; such a record must be logged
+    and skipped rather than emitted as a positionless row."""
+    monkeypatch.setattr(
+        findmy_module,
+        "get_plist_file_content",
+        lambda path: {"encryptedData": b"\x00\x01", "signature": b"\x02"},
+    )
+    context = FakeContext([BEACON_LOC / TRACKER_A / "fix2.record"])
+    _, rows, _ = findmy_module.findMyBeaconLocations(context)
+    assert rows == []
+    assert any("encryptedData" in m for m in logged_messages)
+
+
+def test_row_shape_matches_headers(findmy_module):
+    context = FakeContext([BEACON_LOC / TRACKER_A / "fix2.record"])
+    headers, rows, _ = findmy_module.findMyBeaconLocations(context)
+    assert len(rows) == 1
+    assert len(rows[0]) == len(headers)
+
+
+def test_kmlgen_required_headers_present_as_plain_strings(findmy_module):
+    """kmlgen() bails unless the literal strings 'Latitude' and 'Longitude'
+    are in data_headers, and names points from 'Timestamp'."""
+    headers, _, _ = findmy_module.findMyBeaconLocations(FakeContext([]))
+    assert "Latitude" in headers
+    assert "Longitude" in headers
+    assert ("Timestamp", "datetime") in headers
+
+
+def test_paths_glob_matches_real_world_shapes_and_excludes_siblings(findmy_module):
+    """iLEAPP matches with fnmatch (where * spans '/'), per
+    admin/docs/artifact_info_block.md - so one pattern covers any depth,
+    but it must end '*.record*' to catch the confirmed PA layout
+    '<uuid>_1.record/<uuid>.record.plist'."""
+    import fnmatch
+    import os
+
+    patterns = findmy_module.__artifacts_v2__["findMyBeaconLocations"]["paths"]
+    base = "root/var/mobile/Library/Caches/com.apple.icloud.searchpartyd"
+
+    def matches(path):
+        return any(
+            fnmatch.fnmatch(os.path.normcase(path), os.path.normcase(p)) for p in patterns
+        )
+
+    assert matches(f"{base}/BeaconEstimatedLocation/UUID-1/x.record")
+    assert matches(f"{base}/BeaconEstimatedLocation/UUID-1/UUID-1_1.record/x.record.plist")
+    assert matches(f"{base}/BeaconEstimatedLocation/UUID-1/x.record.decrypted")
+    assert matches(f"{base}/BeaconEstimatedLocation/UUID-1/a/b/c/x.record")
+    assert matches(
+        "root/var/root/Library/Caches/com.apple.icloud.searchpartyd"
+        "/BeaconEstimatedLocation/UUID-1/x.record"
+    )
+
+    # Sibling metadata folders must not be picked up as location fixes.
+    assert not matches(f"{base}/OwnedBeacons/UUID-1.record")
+    assert not matches(f"{base}/SharedBeacons/UUID-1.record")
+    assert not matches(f"{base}/BeaconNamingRecord/UUID-1/n.record")
