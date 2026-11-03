@@ -81,14 +81,21 @@ class BeaconMetadata:
 def classify_record_path(path: Path) -> str:
     """Return "location" or a metadata kind, based on the owning folder.
 
-    The nearest matching ancestor folder wins. Falls back to "location"
-    when no searchpartyd folder is recognisable in the path, preserving
-    the previous behaviour for loose/unusually-exported `.record` files.
+    The nearest matching ancestor folder wins. Matched as a substring
+    rather than an exact name, because Physical Analyzer has been
+    observed to rename/wrap folders on export (e.g. "Items_1.data" around
+    "Items.data.decrypted") - an exact match would silently misclassify
+    the contents of an "OwnedBeacons_1.data" folder as location fixes.
+
+    Falls back to "location" when no searchpartyd folder is recognisable
+    in the path, preserving the behaviour for loose/unusually-exported
+    `.record` files.
     """
     for part in reversed([p.lower() for p in path.parts]):
-        if part in METADATA_DIRS:
-            return METADATA_DIRS[part]
-        if part == LOCATION_DIR:
+        for dir_name, kind in METADATA_DIRS.items():
+            if dir_name in part:
+                return kind
+        if LOCATION_DIR in part:
             return "location"
     return "location"
 

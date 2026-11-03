@@ -38,6 +38,19 @@ def test_classify_falls_back_to_location_when_unrecognised():
     assert classify_record_path(Path("loose/export/thing.record")) == "location"
 
 
+def test_classify_matches_pa_wrapped_folder_names():
+    # PA renames/wraps folders on export; an exact-name match would
+    # misclassify these as location fixes.
+    assert classify_record_path(Path("x/OwnedBeacons_1.data/UUID.record")) == "owned_beacon"
+    assert (
+        classify_record_path(Path("x/BeaconNamingRecord_1.data/UUID/n.record.decrypted"))
+        == "naming_record"
+    )
+    assert (
+        classify_record_path(Path("x/BeaconEstimatedLocation_1.data/UUID/a.record")) == "location"
+    )
+
+
 def test_parses_naming_record_fields():
     data = plistlib.dumps(
         {"associatedBeacon": TRACKER_C, "name": "Keys AirTag", "emoji": "\U0001f511"},
