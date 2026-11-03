@@ -25,8 +25,8 @@ def test_run_writes_default_csv_and_json(tmp_path):
     assert len(rows) == len(data) == 6
 
     log_text = log_path.read_text()
-    assert "record files found: 8" in log_text
-    assert "record files parsed: 7" in log_text
+    assert "record files found: 10" in log_text  # includes 2 beacon metadata records
+    assert "record files parsed: 7" in log_text  # location fixes only
     assert "corrupted.record" in log_text
 
 

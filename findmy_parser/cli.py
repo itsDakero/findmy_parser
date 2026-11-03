@@ -17,6 +17,7 @@ from typing import Optional, Sequence
 
 from .discovery import DiscoveryResult, discover
 from .output.csv_writer import write_csv
+from .output.html_writer import write_html
 from .output.json_writer import write_json
 from .output.kml_writer import write_kml
 
@@ -53,8 +54,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--kml", type=Path, default=None, help="KML output path (not written unless given - optional format)"
     )
+    parser.add_argument(
+        "--html",
+        type=Path,
+        default=None,
+        help="HTML report path (default: <output-dir>/findmy_report.html)",
+    )
     parser.add_argument("--no-csv", action="store_true", help="Skip CSV output")
     parser.add_argument("--no-json", action="store_true", help="Skip JSON output")
+    parser.add_argument("--no-html", action="store_true", help="Skip HTML report")
     parser.add_argument(
         "--log-file", type=Path, default=None, help="Run log path (default: <output-dir>/run.log)"
     )
@@ -89,9 +97,27 @@ def _run_log_text(result: DiscoveryResult) -> str:
         f"inventory files found: {len(result.log.inventory_files_found)}",
         f"inventory files parsed: {len(result.log.inventory_files_parsed)}",
         f"inventory files skipped: {len(result.log.inventory_files_skipped)}",
+        f"beacon metadata records parsed: {len(result.log.metadata_files_parsed)}",
+        f"beacon metadata records skipped: {len(result.log.metadata_files_skipped)}",
         f"directories/entries unreadable during scan: {len(result.log.walk_errors)}",
         "",
     ]
+    if result.log.name_sources:
+        lines.append("tracker name sources (tracker -> where the name came from):")
+        lines.extend(f"  {tid} -> {src}" for tid, src in sorted(result.log.name_sources.items()))
+        lines.append("")
+    if result.log.unmatched_tracker_ids:
+        lines.append("trackers with location fixes but NO name from any source:")
+        lines.extend(f"  {tid}" for tid in result.log.unmatched_tracker_ids)
+        lines.append("")
+        if result.log.inventory_identifiers:
+            lines.append("identifiers present in inventory files (compare against the above):")
+            lines.extend(f"  {i}" for i in sorted(set(result.log.inventory_identifiers)))
+            lines.append("")
+    if result.log.metadata_files_skipped:
+        lines.append("beacon metadata records skipped (path: reason):")
+        lines.extend(f"  {p}: {reason}" for p, reason in result.log.metadata_files_skipped)
+        lines.append("")
     if result.log.walk_errors:
         lines.append("unreadable during scan (path: reason):")
         lines.extend(f"  {path}: {reason}" for path, reason in result.log.walk_errors)
@@ -158,6 +184,13 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
         json_path.parent.mkdir(parents=True, exist_ok=True)
         write_json(result, json_path)
         logger.info("wrote JSON: %s", json_path)
+        wrote_any = True
+
+    if not args.no_html:
+        html_path = args.html or (output_dir / "findmy_report.html")
+        html_path.parent.mkdir(parents=True, exist_ok=True)
+        write_html(result, html_path, source_root=str(root))
+        logger.info("wrote HTML report: %s", html_path)
         wrote_any = True
 
     if args.kml:

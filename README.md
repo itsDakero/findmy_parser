@@ -25,10 +25,27 @@ to or modifies the input path.
 
 Each `.record` file is one location fix (usually a binary plist); the
 `.record` files under one UUID form that tracker's full location history.
-`<UUID>` is joined against the `identifier` field in `Items.data` /
-`Devices.data` to attach a friendly name, emoji, serial number, and
-model. Trackers with no matching inventory entry are still included,
-labelled unknown — no location data is ever dropped.
+
+**searchpartyd beacon metadata** (where friendly names usually come from)
+
+```
+.../com.apple.icloud.searchpartyd/
+  OwnedBeacons/<UUID>.record         <- beacons owned by this account
+  SharedBeacons/<UUID>.record        <- beacons shared with this account
+  BeaconNamingRecord/<UUID>/*.record <- friendly naming info
+```
+
+These are named `*.record` too, so the folder — not the filename —
+distinguishes them from location fixes; parsing them as fixes would emit
+coordinate-less junk rows. They're keyed by the same beacon UUID as
+`BeaconEstimatedLocation`, which makes them a more reliable name source
+than fmipcore, whose `identifier` may not be the same UUID at all.
+
+A tracker's details are resolved in precedence order: fmipcore
+`Items.data`/`Devices.data` first (richest), then `BeaconNamingRecord`,
+then `OwnedBeacons`/`SharedBeacons`. The run log records which source
+supplied each name. Trackers with no name from any source still appear in
+full — no location data is ever dropped for lack of a label.
 
 ## Physical Analyzer exports
 
@@ -53,18 +70,45 @@ pip install -e .
 findmy-parser /path/to/extraction_or_export
 ```
 
-Writes `findmy_locations.csv`, `findmy_locations.json`, and a `run.log`
-into `./findmy_parser_output/` by default. Options:
+Writes `findmy_report.html`, `findmy_locations.csv`,
+`findmy_locations.json`, and a `run.log` into `./findmy_parser_output/`
+by default. Options:
 
 ```
 findmy-parser ROOT [--output-dir DIR] [--csv PATH] [--json PATH]
-              [--kml PATH] [--no-csv] [--no-json] [--log-file PATH] [-v]
+              [--html PATH] [--kml PATH] [--no-csv] [--no-json] [--no-html]
+              [--log-file PATH] [-v]
 ```
 
 - `ROOT` — an extraction root, a Physical Analyzer export folder, or a
   single file.
 - `--kml PATH` — optional KML export for mapping, one track per tracker.
 - `-v` — verbose (debug) logging.
+
+### HTML report
+
+The default `findmy_report.html` is the readable view: one card per
+tracker, headed by that device's details (name, model, serial, and the
+beacon UUID spelled out for verification) with its chronological location
+history in a table beneath, plus a collapsible dump of every other field
+found in its inventory entry. Ends with the full run log, including any
+trackers that couldn't be named and the identifiers that *were* found in
+the inventory files — so an ID mismatch is diagnosable from the report
+itself. Self-contained single file, no external requests, light and dark.
+
+### Diagnosing empty tracker names
+
+`run.log` (and the HTML report's run log) answers this directly:
+
+- `inventory files found: 0` — the inventory files aren't being located.
+  Check they're under the scanned root; PA often names them
+  `Items.data.decrypted` rather than `Items.data`, which is handled.
+- `tracker name sources` — lists which file supplied each name.
+- `trackers with location fixes but NO name from any source`, followed by
+  `identifiers present in inventory files` — if those two lists contain
+  different UUIDs, the inventory simply doesn't use the same identifier as
+  the beacon records, and names must come from `BeaconNamingRecord`
+  instead.
 
 ## Timestamps
 

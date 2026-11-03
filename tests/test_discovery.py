@@ -90,18 +90,22 @@ def test_discover_full_correlation_and_dedup():
     assert len(result.fixes_by_tracker[TRACKER_C]) == 3
     assert any("corrupted.record" in p for p, _ in result.log.record_files_skipped)
 
-    # Correlation: A and B have inventory entries, C does not (unknown tracker).
+    # Correlation: A and B from fmipcore inventory; C has no inventory
+    # entry and is named from its BeaconNamingRecord instead.
     assert result.trackers[TRACKER_A].name == "Backpack AirTag"
     assert result.trackers[TRACKER_B].name == "Dan's iPhone"
-    assert result.trackers[TRACKER_C].source_kind == "unknown"
-    assert result.trackers[TRACKER_C].name is None
+    assert result.trackers[TRACKER_C].name == "Keys AirTag"
+    assert result.trackers[TRACKER_C].source_kind == "naming_record"
 
-    # Nothing is dropped for the unknown tracker.
+    # Nothing is dropped for a tracker with no inventory entry.
     assert TRACKER_C in result.fixes_by_tracker
 
-    # Run log completeness.
-    assert len(result.log.record_files_found) == 8
-    assert len(result.log.record_files_parsed) == 7  # all but corrupted.record
+    # Run log completeness. record_files_found counts every "*.record"
+    # file, including the 2 metadata records, which are then routed away
+    # from location parsing by classify_record_path().
+    assert len(result.log.record_files_found) == 10
+    assert len(result.log.record_files_parsed) == 7  # location fixes, minus corrupted.record
+    assert len(result.log.metadata_files_parsed) == 2  # OwnedBeacons + BeaconNamingRecord
     assert len(result.log.inventory_files_found) == 2
     assert len(result.log.inventory_files_parsed) == 2
 

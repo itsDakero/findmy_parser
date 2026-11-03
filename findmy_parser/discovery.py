@@ -17,13 +17,19 @@ from __future__ import annotations
 
 import os
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Optional
 
 from .beacons import RecordParseError, content_hash, parse_record_file
 from .fmipcore import InventoryParseError, is_fmipcore_filename, parse_inventory_file
 from .models import LocationFix, Tracker
+from .searchpartyd import (
+    BeaconMetadata,
+    MetadataParseError,
+    classify_record_path,
+    parse_metadata_file,
+)
 
 UNRESOLVED_TRACKER_ID = "UNKNOWN"
 
@@ -70,6 +76,15 @@ class DiscoveryLog:
     inventory_files_found: list[str] = field(default_factory=list)
     inventory_files_parsed: list[str] = field(default_factory=list)
     inventory_files_skipped: list[tuple[str, str]] = field(default_factory=list)
+    metadata_files_parsed: list[tuple[str, str]] = field(default_factory=list)
+    """(path, kind) for OwnedBeacons/SharedBeacons/BeaconNamingRecord files."""
+    metadata_files_skipped: list[tuple[str, str]] = field(default_factory=list)
+    name_sources: dict[str, str] = field(default_factory=dict)
+    """tracker_id -> where its friendly name came from, for traceability."""
+    unmatched_tracker_ids: list[str] = field(default_factory=list)
+    """Trackers with location fixes but no name from any source."""
+    inventory_identifiers: list[str] = field(default_factory=list)
+    """Every identifier seen in inventory files - to diagnose ID mismatches."""
     walk_errors: list[tuple[str, str]] = field(default_factory=list)
     """Directories/entries the recursive scan itself couldn't read (permission
     errors, broken symlinks, Windows long-path failures, ...) - the walk skips
@@ -155,11 +170,34 @@ def discover(root: Path) -> DiscoveryResult:
             # PA folder) are not logged as a conflict since fmipcore
             # inventory files are not expected to disagree with themselves.
             trackers.setdefault(tracker.identifier, tracker)
+            log.inventory_identifiers.append(tracker.identifier)
+            if tracker.name:
+                log.name_sources.setdefault(tracker.identifier, f"{tracker.source_kind}: {path}")
 
     fixes_by_tracker: dict[str, list[LocationFix]] = {}
     seen_hashes: dict[str, str] = {}
+    metadata_by_tracker: dict[str, BeaconMetadata] = {}
+
     for path in record_paths:
         hint = resolve_tracker_uuid(path)
+        kind = classify_record_path(path)
+
+        # OwnedBeacons/SharedBeacons/BeaconNamingRecord files are named
+        # "*.record" too, but describe the beacon rather than a location
+        # fix - parsing them as fixes would emit coordinate-less junk rows.
+        if kind != "location":
+            try:
+                metadata = parse_metadata_file(path, kind=kind, tracker_id_hint=hint)
+            except (MetadataParseError, OSError) as exc:
+                log.metadata_files_skipped.append((str(path), str(exc)))
+                continue
+            log.metadata_files_parsed.append((str(path), kind))
+            if metadata.tracker_id:
+                existing = metadata_by_tracker.get(metadata.tracker_id)
+                if existing is None or metadata.priority > existing.priority:
+                    metadata_by_tracker[metadata.tracker_id] = metadata
+            continue
+
         try:
             fix = parse_record_file(path, tracker_id_hint=hint)
         except (RecordParseError, OSError) as exc:
@@ -181,4 +219,46 @@ def discover(root: Path) -> DiscoveryResult:
         if tracker_id not in trackers:
             trackers[tracker_id] = Tracker(identifier=tracker_id, source_kind="unknown")
 
+    _apply_metadata(trackers, metadata_by_tracker, log)
+
+    log.unmatched_tracker_ids = sorted(
+        tid for tid in fixes_by_tracker if not (trackers[tid].name or trackers[tid].model)
+    )
+
     return DiscoveryResult(trackers=trackers, fixes_by_tracker=fixes_by_tracker, log=log)
+
+
+def _apply_metadata(
+    trackers: dict[str, Tracker],
+    metadata_by_tracker: dict[str, BeaconMetadata],
+    log: DiscoveryLog,
+) -> None:
+    """Fill in tracker details from searchpartyd metadata records.
+
+    fmipcore inventory data wins where it already supplied a value, since
+    it's the richer source; metadata records fill the gaps. Crucially they
+    are keyed by the beacon UUID, so they still resolve names for trackers
+    whose fmipcore `identifier` never matched (or that have no fmipcore
+    entry at all).
+    """
+    for tracker_id, metadata in metadata_by_tracker.items():
+        existing = trackers.get(tracker_id)
+        if existing is None:
+            existing = Tracker(identifier=tracker_id, source_kind=metadata.kind)
+
+        merged_name = existing.name or metadata.name
+        if metadata.name and not existing.name:
+            log.name_sources[tracker_id] = f"{metadata.kind}: {metadata.source_file}"
+
+        trackers[tracker_id] = replace(
+            existing,
+            name=merged_name,
+            emoji=existing.emoji or metadata.emoji,
+            model=existing.model or metadata.model,
+            serial_number=existing.serial_number or metadata.serial_number,
+            source_kind=existing.source_kind
+            if existing.source_kind != "unknown"
+            else metadata.kind,
+            source_file=existing.source_file or metadata.source_file,
+            raw=existing.raw or metadata.raw,
+        )

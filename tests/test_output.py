@@ -53,8 +53,40 @@ def test_csv_joins_tracker_name_and_labels_unknown(tmp_path, result):
 
     assert by_tracker[TRACKER_A][0]["tracker_name"] == "Backpack AirTag"
     assert by_tracker[TRACKER_B][0]["tracker_name"] == "Dan's iPhone"
-    assert by_tracker[TRACKER_C][0]["tracker_name"] == ""  # unknown tracker, no name
-    assert by_tracker[TRACKER_C][0]["tracker_source_kind"] == "unknown"
+    # No fmipcore entry, but a BeaconNamingRecord supplies the name.
+    assert by_tracker[TRACKER_C][0]["tracker_name"] == "Keys AirTag"
+    assert by_tracker[TRACKER_C][0]["tracker_source_kind"] == "naming_record"
+
+
+def test_csv_still_emits_rows_for_tracker_with_no_name_anywhere(tmp_path):
+    """A tracker with location fixes but no name from any source must
+    still appear - location data is never dropped for lack of a label."""
+    import plistlib
+
+    from findmy_parser.discovery import discover
+
+    tracker_dir = tmp_path / "BeaconEstimatedLocation" / "DDDDDDDD-DDDD-4DDD-8DDD-DDDDDDDDDDDD"
+    tracker_dir.mkdir(parents=True)
+    with open(tracker_dir / "fix.record", "wb") as fp:
+        plistlib.dump(
+            {
+                "associatedBeacon": "DDDDDDDD-DDDD-4DDD-8DDD-DDDDDDDDDDDD",
+                "latitude": 10.0,
+                "longitude": 20.0,
+            },
+            fp,
+            fmt=plistlib.FMT_BINARY,
+        )
+
+    out = tmp_path / "out.csv"
+    write_csv(discover(tmp_path), out)
+    with open(out, newline="", encoding="utf-8") as fp:
+        rows = list(csv.DictReader(fp))
+
+    assert len(rows) == 1
+    assert rows[0]["tracker_name"] == ""
+    assert rows[0]["tracker_source_kind"] == "unknown"
+    assert rows[0]["latitude"] == "10.0"
 
 
 def test_csv_sorted_chronologically_per_tracker(tmp_path, result):

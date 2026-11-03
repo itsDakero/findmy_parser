@@ -151,10 +151,37 @@ def main() -> None:
     }
     write_bplist(BEACON_LOC / TRACKER_C / "numeric_epoch.record", numeric_epoch_fix)
 
-    # --- Sibling searchpartyd folders (present, minimal content) ---
-    for sibling in ("OwnedBeacons", "SharedBeacons", "BeaconNamingRecord"):
-        (SEARCHPARTYD / sibling).mkdir(parents=True, exist_ok=True)
-        (SEARCHPARTYD / sibling / ".keep").write_text("")
+    # --- Sibling searchpartyd folders ---
+    # These are all named "*.record" like the location fixes, so they
+    # exercise classify_record_path(): they must NOT be parsed as
+    # coordinate-less location fixes, and they're a name source keyed by
+    # the same beacon UUID.
+    (SEARCHPARTYD / "SharedBeacons").mkdir(parents=True, exist_ok=True)
+    (SEARCHPARTYD / "SharedBeacons" / ".keep").write_text("")
+
+    # Tracker A also has an fmipcore entry, so its inventory name wins over
+    # this one - exercises the precedence rule.
+    write_bplist(
+        SEARCHPARTYD / "OwnedBeacons" / f"{TRACKER_A}.record",
+        {
+            "identifier": TRACKER_A,
+            "name": "Owned Beacon Name (should lose to Items.data)",
+            "model": "AirTag",
+            "pairingDate": datetime.datetime(2026, 1, 1, 0, 0, 0),
+        },
+    )
+
+    # Tracker C has NO fmipcore entry - this naming record is the only
+    # place its friendly name exists, which is the real-world case that
+    # motivated parsing these folders at all.
+    write_bplist(
+        SEARCHPARTYD / "BeaconNamingRecord" / TRACKER_C / "naming.record",
+        {
+            "associatedBeacon": TRACKER_C,
+            "name": "Keys AirTag",
+            "emoji": "\U0001f511",
+        },
+    )
 
     # --- fmipcore inventory: Items.data (JSON), Devices.data (JSON) ---
     # Shape confirmed against real Items.data: model name is nested at
