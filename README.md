@@ -181,10 +181,16 @@ pip install -e ".[dev]"
 pytest
 ```
 
-`tests/fixtures/synthetic/` is generated (not committed - it's rebuilt
+`tests/fixtures/synthetic/` and `tests/fixtures/pa_export/` are generated
+(not committed - rebuilt
 automatically by `tests/conftest.py` before the test session runs, from
 `tests/fixtures/generate_synthetic.py`) and covers nested PA-export-style
-folders, format edge cases, and dedup cases.
+folders, format edge cases, and dedup cases. `pa_export/` replicates the
+layout confirmed in a real Cellebrite Physical Analyzer export, where each
+record appears twice (the signed/encrypted on-device file whose top level
+is a 3-element list, and PA's decrypted copy under
+`<uuid>_1.record/<uuid>.record.plist`) and the inventory arrives as
+`<Name>_1.data/<Name>.data.decrypted` as a binary plist.
 
 ## Part 2: iLEAPP module
 

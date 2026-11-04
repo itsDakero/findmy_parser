@@ -50,6 +50,15 @@ class RecordParseError(ValueError):
     """A `.record` payload could not be parsed as plist or JSON."""
 
 
+class EncryptedRecordError(RecordParseError):
+    """The record is the signed/encrypted on-device form, not a readable fix.
+
+    Raised for the wrapper file a Physical Analyzer export leaves beside
+    its decrypted copy. Callers should treat this as an expected skip, not
+    a failure: the same record is readable from the decrypted file.
+    """
+
+
 def parse_record_bytes(
     data: bytes, *, source_file: str, tracker_id_hint: Optional[str] = None
 ) -> LocationFix:
@@ -76,11 +85,39 @@ def parse_record_bytes(
         )
 
     if not isinstance(payload, dict):
-        raise RecordParseError(
-            f"{source_file}: expected a dict at top level, got {type(payload).__name__}"
-        )
+        payload = _unwrap_container(payload, source_file)
 
     return _fix_from_payload(payload, source_file=source_file, tracker_id_hint=tracker_id_hint)
+
+
+def _unwrap_container(payload: Any, source_file: str) -> dict:
+    """Find the usable record inside a non-dict top level, or refuse it.
+
+    A Physical Analyzer export carries each record twice: the on-device
+    file, whose top level is a short list (the signed/encrypted wrapper -
+    observed as 3 elements), and a decrypted copy beside it under
+    "<uuid>_1.record/<uuid>.record.plist", whose top level is the dict of
+    actual fields.
+
+    A list is searched for a dict that actually looks like a fix, in case
+    some export nests it rather than encrypting it. Failing that the file
+    is the wrapper form and raises EncryptedRecordError, which callers
+    treat as an expected skip rather than a parse failure - the decrypted
+    copy alongside it is where the data is.
+    """
+    if isinstance(payload, list):
+        for item in payload:
+            if isinstance(item, dict) and (CONFIRMED_KEYS & item.keys()):
+                return item
+        raise EncryptedRecordError(
+            f"{source_file}: top level is a {len(payload)}-element list holding no "
+            "location fields - the signed/encrypted on-device form; read the "
+            "decrypted copy instead"
+        )
+
+    raise RecordParseError(
+        f"{source_file}: expected a dict at top level, got {type(payload).__name__}"
+    )
 
 
 def parse_record_file(path: Path, *, tracker_id_hint: Optional[str] = None) -> LocationFix:

@@ -66,9 +66,14 @@ def _describe(path: Path) -> dict:
             info["nskeyedarchiver"] = True
     elif isinstance(payload, list):
         info["entries"] = len(payload)
+        # Element types, so the signed/encrypted wrapper form (a short list
+        # of opaque values) is distinguishable from a list of real entries.
+        info["entry_types"] = [type(e).__name__ for e in payload[:6]]
         first = next((e for e in payload if isinstance(e, dict)), None)
         if first is not None:
             info["first_entry_keys"] = sorted(first)
+        else:
+            info["wrapper_form"] = True
     return info
 
 
@@ -113,6 +118,11 @@ def _print_file(info: dict, show_ids: bool) -> None:
         print("      *** ENCRYPTED (encryptedData + signature) - decrypt via PA first")
     if info.get("nskeyedarchiver"):
         print("      NSKeyedArchiver-wrapped")
+    if info.get("entry_types"):
+        print(f"      entry types: {', '.join(info['entry_types'])}")
+    if info.get("wrapper_form"):
+        print("      *** signed/encrypted on-device form (no readable fields);")
+        print("          the decrypted copy is the sibling <uuid>_1.record/*.record.plist")
     keys = info.get("keys") or info.get("first_entry_keys")
     if keys:
         label = "keys" if "keys" in info else "first entry keys"

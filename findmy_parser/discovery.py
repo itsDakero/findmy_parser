@@ -21,11 +21,17 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Optional
 
-from .beacons import RecordParseError, content_hash, parse_record_file
+from .beacons import (
+    EncryptedRecordError,
+    RecordParseError,
+    content_hash,
+    parse_record_file,
+)
 from .fmipcore import InventoryParseError, is_fmipcore_filename, parse_inventory_file
 from .models import LocationFix, Tracker
 from .searchpartyd import (
     BeaconMetadata,
+    EncryptedMetadataError,
     MetadataParseError,
     classify_record_path,
     parse_metadata_file,
@@ -79,6 +85,9 @@ class DiscoveryLog:
     metadata_files_parsed: list[tuple[str, str]] = field(default_factory=list)
     """(path, kind) for OwnedBeacons/SharedBeacons/BeaconNamingRecord files."""
     metadata_files_skipped: list[tuple[str, str]] = field(default_factory=list)
+    encrypted_records: list[str] = field(default_factory=list)
+    """Signed/encrypted on-device records skipped in favour of their
+    decrypted copy. Expected in a PA export, not an error."""
     name_sources: dict[str, str] = field(default_factory=dict)
     """tracker_id -> where its friendly name came from, for traceability."""
     unmatched_tracker_ids: list[str] = field(default_factory=list)
@@ -198,6 +207,9 @@ def discover(root: Path) -> DiscoveryResult:
         if kind != "location":
             try:
                 metadata = parse_metadata_file(path, kind=kind, tracker_id_hint=hint)
+            except EncryptedMetadataError:
+                log.encrypted_records.append(str(path))
+                continue
             except (MetadataParseError, OSError) as exc:
                 log.metadata_files_skipped.append((str(path), str(exc)))
                 continue
@@ -210,6 +222,9 @@ def discover(root: Path) -> DiscoveryResult:
 
         try:
             fix = parse_record_file(path, tracker_id_hint=hint)
+        except EncryptedRecordError:
+            log.encrypted_records.append(str(path))
+            continue
         except (RecordParseError, OSError) as exc:
             log.record_files_skipped.append((str(path), str(exc)))
             continue

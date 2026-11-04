@@ -17,3 +17,4 @@ def pytest_configure(config):
     import generate_synthetic
 
     generate_synthetic.main()
+    generate_synthetic.main_pa()

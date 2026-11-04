@@ -436,6 +436,7 @@ def _run_log_section(result: DiscoveryResult) -> str:
         ("location .record files skipped", len(log.record_files_skipped)),
         ("duplicates dropped", len(log.record_files_deduped)),
         ("beacon metadata records parsed", len(log.metadata_files_parsed)),
+        ("encrypted on-device records skipped", len(log.encrypted_records)),
         ("inventory files found", len(log.inventory_files_found)),
         ("inventory files parsed", len(log.inventory_files_parsed)),
         ("unreadable during scan", len(log.walk_errors)),

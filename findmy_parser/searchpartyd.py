@@ -53,11 +53,34 @@ _MODEL_KEYS = ("model", "modelName", "productType", "deviceModel", "modelDisplay
 _SERIAL_KEYS = ("serialNumber", "serialNo", "serial")
 _IDENTIFIER_KEYS = ("associatedBeacon", "identifier", "beaconIdentifier", "stableIdentifier")
 
+# Confirmed against a real OwnedBeacons/<uuid>.record.plist: batteryLevel,
+# cloudKitMetadata, groupIdentifier, identifier, isZeus, model, pairingDate,
+# privateKey, productId, publicKey, secondarySharedSecret, sharedSecret,
+# stableIdentifier, systemVersion, vendorId. Notably there is NO name field,
+# so OwnedBeacons supplies a model but never a friendly name.
+_KNOWN_METADATA_KEYS = frozenset(
+    _NAME_KEYS
+    + _EMOJI_KEYS
+    + _MODEL_KEYS
+    + _SERIAL_KEYS
+    + _IDENTIFIER_KEYS
+    + ("pairingDate", "batteryLevel", "stableIdentifier", "groupIdentifier", "productId")
+)
+
 _MAX_SEARCH_DEPTH = 3
 
 
 class MetadataParseError(ValueError):
     """A searchpartyd metadata record could not be parsed."""
+
+
+class EncryptedMetadataError(MetadataParseError):
+    """The record is the signed/encrypted on-device form, not readable fields.
+
+    As with location records, a Physical Analyzer export leaves the
+    wrapper file (top level a short list) beside a decrypted copy under
+    "<uuid>_1.record/<uuid>.record.plist". An expected skip, not a failure.
+    """
 
 
 @dataclass(frozen=True)
@@ -121,9 +144,26 @@ def parse_metadata_bytes(
         )
 
     if not isinstance(payload, dict):
-        raise MetadataParseError(
-            f"{source_file}: expected a dict at top level, got {type(payload).__name__}"
-        )
+        if isinstance(payload, list):
+            inner = next(
+                (
+                    item
+                    for item in payload
+                    if isinstance(item, dict) and (_KNOWN_METADATA_KEYS & item.keys())
+                ),
+                None,
+            )
+            if inner is None:
+                raise EncryptedMetadataError(
+                    f"{source_file}: top level is a {len(payload)}-element list holding no "
+                    "beacon fields - the signed/encrypted on-device form; read the "
+                    "decrypted copy instead"
+                )
+            payload = inner
+        else:
+            raise MetadataParseError(
+                f"{source_file}: expected a dict at top level, got {type(payload).__name__}"
+            )
 
     tracker_id = _find_first(payload, _IDENTIFIER_KEYS) or tracker_id_hint or ""
 

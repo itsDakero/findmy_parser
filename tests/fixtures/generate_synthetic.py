@@ -210,5 +210,130 @@ def main() -> None:
     print(f"Synthetic fixtures written under {ROOT}")
 
 
+
+
+# ---------------------------------------------------------------------------
+# A second root replicating the layout confirmed in a real Cellebrite
+# Physical Analyzer export (F:\...\PA Export). Every record appears twice:
+# the signed/encrypted on-device file, whose top level is a 3-element list,
+# and PA's decrypted copy beside it under "<uuid>_1.record/<uuid>.record.plist".
+# The fmipcore inventory arrives as "<Name>_1.data/<Name>.data.decrypted",
+# a binary plist holding a list - and Devices.data keys the beacon UUID as
+# baUUID, not identifier.
+# ---------------------------------------------------------------------------
+
+PA_ROOT = Path(__file__).parent / "pa_export"
+
+PA_BEACON_1 = "0C5F7EB4-074C-4DB1-8190-ECF04E6F46C8"
+PA_BEACON_2 = "2ED95028-C21F-4572-8B73-BB3790856977"
+PA_RECORD_1 = "32087C44-825D-4356-9A76-AFD88F59323F"
+PA_RECORD_2 = "3DC87E0E-EC45-4FB3-8957-2DF731B06893"
+
+
+def _wrapper_list():
+    """The signed/encrypted on-device form: a 3-element list of opaque values."""
+    return [1, b"\x00encrypted-payload-stand-in", b"\x00signature-stand-in"]
+
+
+def write_pa_record(beacon_uuid, record_uuid, payload):
+    """Write both halves of a PA-exported record."""
+    base = PA_ROOT / "BeaconEstimatedLocation" / beacon_uuid
+    write_bplist(base / f"{record_uuid}.record", _wrapper_list())
+    write_bplist(base / f"{record_uuid}_1.record" / f"{record_uuid}.record.plist", payload)
+
+
+def main_pa() -> None:
+    write_pa_record(
+        PA_BEACON_1,
+        PA_RECORD_1,
+        {
+            "associatedBeacon": PA_BEACON_1,
+            "identifier": PA_RECORD_1,
+            "latitude": 51.501,
+            "longitude": -0.142,
+            "horizontalAccuracy": 11.0,
+            "timestamp": datetime.datetime(2026, 10, 1, 9, 0, 0),
+            "scanDate": datetime.datetime(2026, 10, 1, 9, 0, 3),
+            "locationSource": 2,
+            "cloudKitMetadata": b"",
+        },
+    )
+    write_pa_record(
+        PA_BEACON_1,
+        PA_RECORD_2,
+        {
+            "associatedBeacon": PA_BEACON_1,
+            "identifier": PA_RECORD_2,
+            "latitude": 51.502,
+            "longitude": -0.143,
+            "horizontalAccuracy": 9.0,
+            "timestamp": datetime.datetime(2026, 10, 1, 10, 0, 0),
+            "scanDate": datetime.datetime(2026, 10, 1, 10, 0, 2),
+            "locationSource": 2,
+            "cloudKitMetadata": b"",
+        },
+    )
+
+    # OwnedBeacons: same two-file pattern. The decrypted copy's real key set
+    # carries a model but NO name field.
+    owned = PA_ROOT / "OwnedBeacons"
+    write_bplist(owned / f"{PA_BEACON_1}.record", _wrapper_list())
+    write_bplist(
+        owned / f"{PA_BEACON_1}_1.record" / f"{PA_BEACON_1}.record.plist",
+        {
+            "identifier": PA_BEACON_1,
+            "model": "AirTag",
+            "pairingDate": datetime.datetime(2026, 2, 14, 18, 30, 0),
+            "batteryLevel": 0.9,
+            "stableIdentifier": "stable-1",
+            "groupIdentifier": "group-1",
+            "productId": 1234,
+            "vendorId": 76,
+            "systemVersion": "2.0.73",
+            "isZeus": False,
+        },
+    )
+
+    # Inventory: PA naming, binary plist, Devices keyed by baUUID.
+    items = [
+        {
+            "identifier": PA_BEACON_1,
+            "name": "Keys AirTag",
+            "serialNumber": "AT-SN-9001",
+            "productType": {"productInformation": {"modelName": "AirTag"}},
+            "location": {"latitude": 51.5, "longitude": -0.14},
+        }
+    ]
+    write_bplist(PA_ROOT / "Items_1.data" / "Items.data.decrypted", items)
+
+    devices = [
+        {
+            "id": "device-internal-id",
+            "baUUID": PA_BEACON_2,
+            "name": "Dan's iPhone",
+            "deviceDisplayName": "iPhone 15 Pro",
+            "rawDeviceModel": "iPhone16,1",
+        }
+    ]
+    write_bplist(PA_ROOT / "Devices_1.data" / "Devices.data.decrypted", devices)
+
+    # A fix for the device beacon, so the baUUID join is exercised.
+    write_pa_record(
+        PA_BEACON_2,
+        "9F1C2B44-0000-4000-8000-00000000AAAA",
+        {
+            "associatedBeacon": PA_BEACON_2,
+            "latitude": 53.48,
+            "longitude": -2.24,
+            "horizontalAccuracy": 20.0,
+            "timestamp": datetime.datetime(2026, 10, 2, 8, 0, 0),
+            "scanDate": datetime.datetime(2026, 10, 2, 8, 0, 1),
+        },
+    )
+
+    print(f"PA-layout fixtures written under {PA_ROOT}")
+
+
 if __name__ == "__main__":
     main()
+    main_pa()

@@ -101,6 +101,8 @@ def _run_log_text(result: DiscoveryResult) -> str:
         f"inventory files parsed: {len(result.log.inventory_files_parsed)}",
         f"inventory files skipped: {len(result.log.inventory_files_skipped)}",
         f"beacon metadata records parsed: {len(result.log.metadata_files_parsed)}",
+        f"encrypted on-device records skipped (decrypted copy used instead): "
+        f"{len(result.log.encrypted_records)}",
         f"beacon metadata records skipped: {len(result.log.metadata_files_skipped)}",
         f"directories/entries unreadable during scan: {len(result.log.walk_errors)}",
         "",
