@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from .sniff import detect_format
+from .timestamps import normalize_timestamp
 
 LOCATION_DIR = "beaconestimatedlocation"
 
@@ -52,6 +53,9 @@ _EMOJI_KEYS = ("emoji", "icon", "glyph")
 _MODEL_KEYS = ("model", "modelName", "productType", "deviceModel", "modelDisplayName")
 _SERIAL_KEYS = ("serialNumber", "serialNo", "serial")
 _IDENTIFIER_KEYS = ("associatedBeacon", "identifier", "beaconIdentifier", "stableIdentifier")
+# Confirmed present in a real OwnedBeacons record.
+_PAIRING_DATE_KEYS = ("pairingDate",)
+_BATTERY_LEVEL_KEYS = ("batteryLevel",)
 
 # Confirmed against a real OwnedBeacons/<uuid>.record.plist: batteryLevel,
 # cloudKitMetadata, groupIdentifier, identifier, isZeus, model, pairingDate,
@@ -92,6 +96,9 @@ class BeaconMetadata:
     emoji: Optional[str] = None
     model: Optional[str] = None
     serial_number: Optional[str] = None
+    pairing_date_utc: Optional[str] = None
+    pairing_date_raw: Any = None
+    battery_level: Optional[float] = None
     kind: str = "unknown"
     source_file: str = ""
     raw: dict[str, Any] = field(default_factory=dict)
@@ -166,6 +173,7 @@ def parse_metadata_bytes(
             )
 
     tracker_id = _find_first(payload, _IDENTIFIER_KEYS) or tracker_id_hint or ""
+    pairing = normalize_timestamp(_find_first(payload, _PAIRING_DATE_KEYS))
 
     return BeaconMetadata(
         tracker_id=str(tracker_id),
@@ -173,6 +181,9 @@ def parse_metadata_bytes(
         emoji=_as_str(_find_first(payload, _EMOJI_KEYS)),
         model=_as_str(_find_first(payload, _MODEL_KEYS)),
         serial_number=_as_str(_find_first(payload, _SERIAL_KEYS)),
+        pairing_date_utc=pairing.iso_utc,
+        pairing_date_raw=pairing.raw,
+        battery_level=_as_float(_find_first(payload, _BATTERY_LEVEL_KEYS)),
         kind=kind,
         source_file=source_file,
         raw=payload,
@@ -218,6 +229,15 @@ def _find_first(payload: Any, keys: tuple[str, ...], _depth: int = 0) -> Any:
                 return found
 
     return None
+
+
+def _as_float(value: Any) -> Optional[float]:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _as_str(value: Any) -> Optional[str]:

@@ -20,6 +20,9 @@ FIELDNAMES = [
     "tracker_serial_number",
     "tracker_model",
     "tracker_source_kind",
+    "tracker_pairing_date_utc",
+    "tracker_pairing_date_raw",
+    "tracker_battery_level",
     "latitude",
     "longitude",
     "horizontal_accuracy",
@@ -47,6 +50,11 @@ def iter_rows(result: DiscoveryResult) -> Iterator[dict]:
             "tracker_serial_number": tracker.serial_number if tracker else None,
             "tracker_model": tracker.model if tracker else None,
             "tracker_source_kind": tracker.source_kind if tracker else "unknown",
+            "tracker_pairing_date_utc": tracker.pairing_date_utc if tracker else None,
+            "tracker_pairing_date_raw": _stringify_raw(tracker.pairing_date_raw)
+            if tracker
+            else None,
+            "tracker_battery_level": tracker.battery_level if tracker else None,
             "latitude": fix.latitude,
             "longitude": fix.longitude,
             "horizontal_accuracy": fix.horizontal_accuracy,

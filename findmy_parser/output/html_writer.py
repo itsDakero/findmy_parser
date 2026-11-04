@@ -381,6 +381,8 @@ def _tracker_section(
         "<dl class='details'>",
         _detail("Model", tracker.model if tracker else None),
         _detail("Serial number", tracker.serial_number if tracker else None),
+        _detail("Paired", tracker.pairing_date_utc if tracker else None),
+        _detail("Battery level", _battery(tracker)),
         _detail("First fix", fixes[0].timestamp_utc if fixes else None),
         _detail("Last fix", fixes[-1].timestamp_utc if fixes else None),
         _detail("Name source", name_source),
@@ -471,6 +473,16 @@ def _run_log_section(result: DiscoveryResult) -> str:
 
     out.append("</div></section>")
     return "".join(out)
+
+
+def _battery(tracker: Optional[Tracker]) -> Optional[str]:
+    """Battery as a percentage where it looks like a 0-1 fraction."""
+    if tracker is None or tracker.battery_level is None:
+        return None
+    level = tracker.battery_level
+    if 0 <= level <= 1:
+        return f"{level * 100:.0f}% ({level} as stored)"
+    return f"{level} (as stored)"
 
 
 def _detail(label: str, value: Any) -> str:

@@ -135,3 +135,22 @@ def test_unmatched_tracker_ids_reports_nameless_trackers(tmp_path):
         )
     result = discover(tmp_path)
     assert result.log.unmatched_tracker_ids == ["DDDDDDDD-DDDD-4DDD-8DDD-DDDDDDDDDDDD"]
+
+
+def test_pairing_date_normalised_and_battery_parsed():
+    data = plistlib.dumps(
+        {
+            "identifier": TRACKER_A,
+            "model": "AirTag",
+            "pairingDate": __import__("datetime").datetime(2026, 2, 14, 18, 30, 0),
+            "batteryLevel": 0.9,
+        },
+        fmt=plistlib.FMT_BINARY,
+    )
+    meta = parse_metadata_bytes(data, source_file="o.record", kind="owned_beacon")
+    assert meta.pairing_date_utc == "2026-02-14T18:30:00Z"
+    assert meta.pairing_date_raw is not None
+    assert meta.battery_level == 0.9
+    # Confirmed: OwnedBeacons carries no name field.
+    assert meta.name is None
+    assert meta.model == "AirTag"

@@ -44,7 +44,17 @@ than fmipcore, whose `identifier` may not be the same UUID at all.
 A tracker's details are resolved in precedence order: fmipcore
 `Items.data`/`Devices.data` first (richest), then `BeaconNamingRecord`,
 then `OwnedBeacons`/`SharedBeacons`. The run log records which source
-supplied each name. Trackers with no name from any source still appear in
+supplied each name.
+
+`OwnedBeacons`/`SharedBeacons` carry no name field at all (confirmed
+against a real export), but they do carry `pairingDate` and
+`batteryLevel`, which are reported as `tracker_pairing_date_utc`,
+`tracker_pairing_date_raw` and `tracker_battery_level`. Pairing date
+bounds when a tracker entered the account, independently of any location
+fix. Their remaining fields (`stableIdentifier`, `groupIdentifier`,
+`productId`, `vendorId`, `systemVersion`, `isZeus`, and the key material)
+are preserved on `Tracker.raw` and shown in the HTML report's
+collapsible field dump. Trackers with no name from any source still appear in
 full — no location data is ever dropped for lack of a label.
 
 ## Physical Analyzer exports

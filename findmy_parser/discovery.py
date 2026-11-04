@@ -281,6 +281,13 @@ def _apply_metadata(
             emoji=existing.emoji or metadata.emoji,
             model=existing.model or metadata.model,
             serial_number=existing.serial_number or metadata.serial_number,
+            pairing_date_utc=existing.pairing_date_utc or metadata.pairing_date_utc,
+            pairing_date_raw=existing.pairing_date_raw
+            if existing.pairing_date_raw is not None
+            else metadata.pairing_date_raw,
+            battery_level=existing.battery_level
+            if existing.battery_level is not None
+            else metadata.battery_level,
             source_kind=existing.source_kind
             if existing.source_kind != "unknown"
             else metadata.kind,

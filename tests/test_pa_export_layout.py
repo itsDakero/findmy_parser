@@ -108,3 +108,38 @@ def test_cli_end_to_end_writes_named_rows(tmp_path):
     report = (out_dir / "findmy_report.html").read_text()
     assert "Keys AirTag" in report
     assert BEACON_ITEM in report
+
+
+def test_pairing_date_and_battery_from_owned_beacons(result):
+    """OwnedBeacons has no name, but it does carry pairingDate and
+    batteryLevel - pairing date bounds when the tracker entered the
+    account, independently of any location fix."""
+    tracker = result.trackers[BEACON_ITEM]
+    assert tracker.pairing_date_utc == "2026-02-14T18:30:00Z"
+    assert tracker.battery_level == pytest.approx(0.9)
+    # The raw value is preserved alongside the normalised one.
+    assert tracker.pairing_date_raw is not None
+
+
+def test_tracker_without_owned_beacon_has_no_pairing_date(result):
+    tracker = result.trackers[BEACON_DEVICE]
+    assert tracker.pairing_date_utc is None
+    assert tracker.battery_level is None
+
+
+def test_pairing_columns_in_csv_and_report(tmp_path):
+    out_dir = tmp_path / "out"
+    run([str(PA_ROOT), "--output-dir", str(out_dir)])
+
+    with open(out_dir / "findmy_locations.csv", newline="", encoding="utf-8") as fp:
+        rows = list(csv.DictReader(fp))
+    assert "tracker_pairing_date_utc" in rows[0]
+    assert "tracker_battery_level" in rows[0]
+    paired = [r for r in rows if r["tracker_pairing_date_utc"]]
+    assert len(paired) == 2  # the two fixes of the item that has an OwnedBeacons record
+    assert paired[0]["tracker_pairing_date_utc"] == "2026-02-14T18:30:00Z"
+    assert paired[0]["tracker_battery_level"] == "0.9"
+
+    report = (out_dir / "findmy_report.html").read_text()
+    assert "<dt>Paired</dt>" in report
+    assert "90%" in report  # 0-1 fraction rendered as a percentage

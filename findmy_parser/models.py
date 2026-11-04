@@ -35,6 +35,16 @@ class Tracker:
     model: Optional[str] = None
     last_known_latitude: Optional[float] = None
     last_known_longitude: Optional[float] = None
+    pairing_date_utc: Optional[str] = None
+    """When the beacon was paired to the account, ISO 8601 UTC.
+
+    From OwnedBeacons/SharedBeacons `pairingDate` (confirmed present in a
+    real export). Often evidentially significant: it bounds when a tracker
+    entered the account, independently of any location fix.
+    """
+    pairing_date_raw: Any = None
+    battery_level: Optional[float] = None
+    """OwnedBeacons `batteryLevel`, as stored (observed as a 0-1 fraction)."""
     source_kind: str = "unknown"  # "item" | "device" | ... (see fmipcore.FILENAME_SOURCE_KIND)
     source_file: Optional[str] = None
     raw: dict[str, Any] = field(default_factory=dict)
