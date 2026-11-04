@@ -90,3 +90,24 @@ def test_lists_contents_when_nothing_recognised(tmp_path, capsys):
 
 def test_missing_path_returns_error(tmp_path, capsys):
     assert main([str(tmp_path / "nope")]) == 2
+
+
+def test_unquoted_path_with_spaces_is_accepted(tmp_path, capsys):
+    """A Windows path with spaces arrives as several argv entries when
+    unquoted; joining them back is friendlier than rejecting the extras."""
+    spaced = tmp_path / "AIRTAG DATA" / "AIRTAG TEST" / "PA Export"
+    (spaced / "Caches/com.apple.findmy.fmipcore").mkdir(parents=True)
+    (spaced / "Caches/com.apple.findmy.fmipcore/Items.data").write_text(
+        json.dumps([{"identifier": "X1", "name": "n"}])
+    )
+
+    # As the shell would split it.
+    argv = str(spaced).split(" ")
+    assert len(argv) > 1
+    assert main(argv) == 0
+    assert "fmipcore inventory files   : 1" in capsys.readouterr().out
+
+
+def test_missing_spaced_path_hints_about_quoting(tmp_path, capsys):
+    assert main([str(tmp_path / "no such"), "folder"]) == 2
+    assert "wrap it in quotes" in capsys.readouterr().err

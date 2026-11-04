@@ -127,25 +127,34 @@ def main(argv: Optional[list[str]] = None) -> int:
             "names, types and counts - never field values."
         ),
     )
-    parser.add_argument("root", type=Path, help="Extraction root or PA export folder")
+    # nargs="+" so an unquoted Windows path containing spaces still works:
+    # "D:\\AIRTAG DATA\\PA Export" arrives as three argv entries otherwise.
+    parser.add_argument(
+        "root", nargs="+", help="Extraction root or PA export folder"
+    )
     parser.add_argument(
         "--show-ids",
         action="store_true",
         help="Include truncated identifiers in the output (off by default)",
     )
     args = parser.parse_args(argv)
+    root = Path(" ".join(args.root))
 
-    if not args.root.exists():
-        print(f"ERROR: path does not exist: {args.root}", file=sys.stderr)
+    if not root.exists():
+        print(f"ERROR: path does not exist: {root}", file=sys.stderr)
+        print(
+            "If the path contains spaces, wrap it in quotes.",
+            file=sys.stderr,
+        )
         return 2
 
-    record_paths, inventory_paths, walk_errors = discover_files(args.root)
+    record_paths, inventory_paths, walk_errors = discover_files(root)
 
     by_kind: dict[str, list[Path]] = {}
     for path in record_paths:
         by_kind.setdefault(classify_record_path(path), []).append(path)
 
-    print(f"ROOT: {args.root}")
+    print(f"ROOT: {root}")
     print()
     print("=== WHAT WAS FOUND ===")
     print(f"  files matching '*.record*' : {len(record_paths)}")
@@ -160,8 +169,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         print()
         print("  NOTHING FOUND. Either the path is wrong, or the filenames differ")
         print("  from anything recognised. Listing what IS there, 2 levels down:")
-        for child in sorted(args.root.rglob("*"))[:40]:
-            print(f"      {child.relative_to(args.root)}")
+        for child in sorted(root.rglob("*"))[:40]:
+            print(f"      {child.relative_to(root)}")
         return 1
 
     print()

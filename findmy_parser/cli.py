@@ -34,9 +34,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "never writes to, or modifies, the input path."
         ),
     )
+    # nargs="+" so an unquoted path containing spaces still works: a
+    # Windows path like "D:\\AIRTAG DATA\\PA Export" otherwise arrives as
+    # three separate argv entries and argparse rejects the extras.
     parser.add_argument(
         "root",
-        type=Path,
+        nargs="+",
         help="Extraction root, Physical Analyzer export folder, or a single file",
     )
     parser.add_argument(
@@ -142,9 +145,10 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
     args = parser.parse_args(argv)
     _configure_logging(args.verbose)
 
-    root: Path = args.root
+    root = Path(" ".join(args.root))
     if not root.exists():
         logger.error("input path does not exist: %s", root)
+        logger.error("if the path contains spaces, wrap it in quotes")
         return 2
 
     logger.info("scanning %s (read-only)", root)

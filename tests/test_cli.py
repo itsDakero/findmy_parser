@@ -78,3 +78,12 @@ def test_run_never_writes_inside_input_root(tmp_path):
     after_mtimes = {p: p.stat().st_mtime_ns for p in after if p.is_file()}
     assert before == after
     assert before_mtimes == after_mtimes
+
+
+def test_unquoted_path_with_spaces_is_accepted(tmp_path):
+    """Same shell-splitting tolerance as the diagnostic entry point."""
+    spaced = tmp_path / "AIRTAG DATA" / "PA Export"
+    spaced.mkdir(parents=True)
+    out_dir = tmp_path / "out"
+    assert run(str(spaced).split(" ") + ["--output-dir", str(out_dir)]) == 0
+    assert (out_dir / "run.log").exists()
