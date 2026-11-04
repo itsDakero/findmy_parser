@@ -143,3 +143,9 @@ def test_pairing_columns_in_csv_and_report(tmp_path):
     report = (out_dir / "findmy_report.html").read_text()
     assert "<dt>Paired</dt>" in report
     assert "90%" in report  # 0-1 fraction rendered as a percentage
+
+
+def test_pa_export_has_no_pairing_anomaly(result):
+    """The PA-layout fixture's fixes all follow its pairing date, so the
+    check must stay quiet on well-formed data."""
+    assert result.log.fixes_before_pairing == []

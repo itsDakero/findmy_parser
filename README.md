@@ -130,6 +130,12 @@ real run:
   Check they're under the scanned root; PA often names them
   `Items.data.decrypted` rather than `Items.data`, which is handled.
 - `tracker name sources` — lists which file supplied each name.
+- `trackers with a location fix PREDATING their recorded pairingDate` —
+  flagged automatically, and also marked on the tracker's card in the HTML
+  report. The tool records the discrepancy without interpreting it: it can
+  indicate a previous pairing to another account, a `pairingDate` reset by
+  re-pairing, clock skew, or that `pairingDate` does not mean what it
+  appears to.
 - `trackers with location fixes but NO name from any source`, followed by
   `identifiers present in inventory files` — if those two lists contain
   different UUIDs, the inventory simply doesn't use the same identifier as

@@ -94,6 +94,12 @@ class DiscoveryLog:
     """Trackers with location fixes but no name from any source."""
     inventory_identifiers: list[str] = field(default_factory=list)
     """Every identifier seen in inventory files - to diagnose ID mismatches."""
+    fixes_before_pairing: list[tuple[str, str, str]] = field(default_factory=list)
+    """(tracker_id, pairing_date, earliest_fix) where a location fix predates
+    the beacon's recorded pairingDate. Worth an examiner's attention: it can
+    mean the beacon was paired before to another account, that pairingDate was
+    reset by a re-pair, clock skew, or that pairingDate does not mean what it
+    appears to. This records the discrepancy and does not interpret it."""
     walk_errors: list[tuple[str, str]] = field(default_factory=list)
     """Directories/entries the recursive scan itself couldn't read (permission
     errors, broken symlinks, Windows long-path failures, ...) - the walk skips
@@ -249,8 +255,33 @@ def discover(root: Path) -> DiscoveryResult:
     log.unmatched_tracker_ids = sorted(
         tid for tid in fixes_by_tracker if not (trackers[tid].name or trackers[tid].model)
     )
+    log.fixes_before_pairing = _fixes_before_pairing(trackers, fixes_by_tracker)
 
     return DiscoveryResult(trackers=trackers, fixes_by_tracker=fixes_by_tracker, log=log)
+
+
+def _fixes_before_pairing(
+    trackers: dict[str, Tracker],
+    fixes_by_tracker: dict[str, list[LocationFix]],
+) -> list[tuple[str, str, str]]:
+    """Trackers whose earliest fix predates their recorded pairing date.
+
+    Both values are ISO 8601 UTC strings, so a lexicographic comparison is
+    a chronological one. Trackers with no pairing date, or no fix carrying
+    a timestamp, are skipped rather than guessed at.
+    """
+    found = []
+    for tracker_id, fixes in fixes_by_tracker.items():
+        pairing = trackers[tracker_id].pairing_date_utc
+        if not pairing:
+            continue
+        timestamps = [f.timestamp_utc for f in fixes if f.timestamp_utc]
+        if not timestamps:
+            continue
+        earliest = min(timestamps)
+        if earliest < pairing:
+            found.append((tracker_id, pairing, earliest))
+    return sorted(found)
 
 
 def _apply_metadata(

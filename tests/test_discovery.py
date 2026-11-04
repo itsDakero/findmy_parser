@@ -217,3 +217,75 @@ def test_tracker_correlates_via_alt_identifier(tmp_path):
     result = discover(tmp_path)
     assert result.trackers[beacon_uuid].name == "Dan's iPhone"
     assert result.log.unmatched_tracker_ids == []
+
+
+def _write_bplist(path, payload):
+    import plistlib
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "wb") as fp:
+        plistlib.dump(payload, fp, fmt=plistlib.FMT_BINARY)
+
+
+def test_flags_fix_predating_pairing_date(tmp_path):
+    """A fix earlier than the recorded pairingDate is surfaced, not buried:
+    it can mean a prior pairing to another account, a re-pair resetting the
+    date, clock skew, or pairingDate meaning something else."""
+    import datetime
+
+    uuid = "0C5F7EB4-074C-4DB1-8190-ECF04E6F46C8"
+    _write_bplist(
+        tmp_path / "OwnedBeacons" / f"{uuid}_1.record" / f"{uuid}.record.plist",
+        {"identifier": uuid, "model": "AirTag", "pairingDate": datetime.datetime(2026, 6, 1, 12)},
+    )
+    _write_bplist(
+        tmp_path / "BeaconEstimatedLocation" / uuid / "early_1.record" / "early.record.plist",
+        {
+            "associatedBeacon": uuid,
+            "latitude": 51.5,
+            "longitude": -0.1,
+            "timestamp": datetime.datetime(2026, 1, 15, 9),
+        },
+    )
+
+    result = discover(tmp_path)
+    assert result.log.fixes_before_pairing == [
+        (uuid, "2026-06-01T12:00:00Z", "2026-01-15T09:00:00Z")
+    ]
+
+
+def test_no_flag_when_fixes_follow_pairing(tmp_path):
+    import datetime
+
+    uuid = "0C5F7EB4-074C-4DB1-8190-ECF04E6F46C8"
+    _write_bplist(
+        tmp_path / "OwnedBeacons" / f"{uuid}_1.record" / f"{uuid}.record.plist",
+        {"identifier": uuid, "pairingDate": datetime.datetime(2026, 1, 1, 12)},
+    )
+    _write_bplist(
+        tmp_path / "BeaconEstimatedLocation" / uuid / "f_1.record" / "f.record.plist",
+        {
+            "associatedBeacon": uuid,
+            "latitude": 51.5,
+            "longitude": -0.1,
+            "timestamp": datetime.datetime(2026, 6, 15, 9),
+        },
+    )
+    assert discover(tmp_path).log.fixes_before_pairing == []
+
+
+def test_no_flag_without_a_pairing_date(tmp_path):
+    """Trackers with no pairingDate are skipped, not guessed at."""
+    import datetime
+
+    uuid = "0C5F7EB4-074C-4DB1-8190-ECF04E6F46C8"
+    _write_bplist(
+        tmp_path / "BeaconEstimatedLocation" / uuid / "f_1.record" / "f.record.plist",
+        {
+            "associatedBeacon": uuid,
+            "latitude": 51.5,
+            "longitude": -0.1,
+            "timestamp": datetime.datetime(2026, 6, 15, 9),
+        },
+    )
+    assert discover(tmp_path).log.fixes_before_pairing == []

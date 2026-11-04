@@ -162,6 +162,7 @@ h2 .unnamed { color: var(--secondary-label); font-weight: 400; }
 }
 
 .pill.count { background: rgba(0, 113, 227, 0.12); color: var(--blue); }
+.pill.warn-pill { background: rgba(255, 149, 0, 0.14); color: var(--orange); }
 
 .uuid {
   margin-top: 12px;
@@ -376,6 +377,9 @@ def _tracker_section(
         f"<h2>{title}</h2>",
         f"<span class='pill'>{_esc(kind)}</span>",
         f"<span class='pill count'>{len(fixes)} fixes</span>",
+        "<span class='pill warn-pill'>fix predates pairing</span>"
+        if any(t == tracker_id for t, _p, _e in result.log.fixes_before_pairing)
+        else "",
         "</div>",
         f"<div class='uuid'>Beacon UUID: <b>{_esc(tracker_id)}</b></div>",
         "<dl class='details'>",
@@ -446,6 +450,21 @@ def _run_log_section(result: DiscoveryResult) -> str:
         out.append(f"<li>{_esc(label)}: {value}</li>")
     out.append("</ul>")
 
+    if log.fixes_before_pairing:
+        out.append(
+            "<h3 class='warn'>Location fix predating the recorded pairing date</h3>"
+            "<ul>"
+            + "".join(
+                f"<li>{_esc(tid)} &mdash; paired {_esc(pairing)}, "
+                f"earliest fix {_esc(earliest)}</li>"
+                for tid, pairing, earliest in log.fixes_before_pairing
+            )
+            + "</ul>"
+            "<p style='font-size:12px;color:var(--secondary-label)'>Not interpreted here. "
+            "Can indicate a previous pairing to another account, a pairingDate reset by "
+            "re-pairing, clock skew, or that pairingDate does not mean what it appears "
+            "to.</p>"
+        )
     if log.unmatched_tracker_ids:
         out.append(
             "<h3 class='warn'>Trackers with no name from any source</h3><ul>"

@@ -111,6 +111,18 @@ def _run_log_text(result: DiscoveryResult) -> str:
         lines.append("tracker name sources (tracker -> where the name came from):")
         lines.extend(f"  {tid} -> {src}" for tid, src in sorted(result.log.name_sources.items()))
         lines.append("")
+    if result.log.fixes_before_pairing:
+        lines.append("trackers with a location fix PREDATING their recorded pairingDate:")
+        lines.extend(
+            f"  {tid}: paired {pairing}, earliest fix {earliest}"
+            for tid, pairing, earliest in result.log.fixes_before_pairing
+        )
+        lines.append(
+            "  (not interpreted here: can indicate a previous pairing to another "
+            "account, a pairingDate reset by re-pairing, clock skew, or that "
+            "pairingDate does not mean what it appears to)"
+        )
+        lines.append("")
     if result.log.unmatched_tracker_ids:
         lines.append("trackers with location fixes but NO name from any source:")
         lines.extend(f"  {tid}" for tid in result.log.unmatched_tracker_ids)
@@ -156,6 +168,10 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
     logger.info("scanning %s (read-only)", root)
     result = discover(root)
 
+    for tid, pairing, earliest in result.log.fixes_before_pairing:
+        logger.warning(
+            "tracker %s has a fix at %s predating its pairingDate of %s", tid, earliest, pairing
+        )
     for path, reason in result.log.walk_errors:
         logger.warning("could not read during scan %s: %s", path, reason)
     for path, reason in result.log.record_files_skipped:
