@@ -98,7 +98,23 @@ itself. Self-contained single file, no external requests, light and dark.
 
 ### Diagnosing empty tracker names
 
-`run.log` (and the HTML report's run log) answers this directly:
+First, run the structural diagnostic — it reports what the input actually
+is and works out whether a name join is even possible:
+
+```sh
+python3 -m findmy_parser.diagnose /path/to/extraction_or_export
+```
+
+It prints, per file, the detected format, top-level type, key names, and
+whether the file is still in the on-device encrypted form
+(`encryptedData` + `signature` — decrypt via PA first). It ends with a
+verdict on whether the beacon UUIDs and the inventory identifiers
+overlap at all. Deliberately prints key names, types and counts but never
+field values or whole identifiers, so the output is safe to share; pass
+`--show-ids` to see truncated identifiers yourself.
+
+`run.log` (and the HTML report's run log) covers the same ground after a
+real run:
 
 - `inventory files found: 0` — the inventory files aren't being located.
   Check they're under the scanned root; PA often names them
@@ -108,7 +124,8 @@ itself. Self-contained single file, no external requests, light and dark.
   `identifiers present in inventory files` — if those two lists contain
   different UUIDs, the inventory simply doesn't use the same identifier as
   the beacon records, and names must come from `BeaconNamingRecord`
-  instead.
+  instead. Note that `Items.data` keys on `identifier` while
+  `Devices.data` keys the beacon UUID as `baUUID`; both are collected.
 
 ## Timestamps
 
