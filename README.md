@@ -48,7 +48,11 @@ supplied each name.
 
 `OwnedBeacons`/`SharedBeacons` carry no name field at all (confirmed
 against a real export), but they do carry `pairingDate` and
-`batteryLevel`, which are reported as `tracker_pairing_date_utc`,
+`batteryLevel`. On one examined device (7 beacons, ~100 records) every
+beacon's earliest fix fell after its `pairingDate`, and one beacon's
+`OwnedBeacons` record carried no `pairingDate` at all — so a missing
+pairing date is reported with the reason, distinguishing no ownership
+record being found from a record that omits the field, which are reported as `tracker_pairing_date_utc`,
 `tracker_pairing_date_raw` and `tracker_battery_level`. Pairing date
 bounds when a tracker entered the account, independently of any location
 fix. Their remaining fields (`stableIdentifier`, `groupIdentifier`,

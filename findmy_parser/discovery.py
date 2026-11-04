@@ -94,6 +94,11 @@ class DiscoveryLog:
     """Trackers with location fixes but no name from any source."""
     inventory_identifiers: list[str] = field(default_factory=list)
     """Every identifier seen in inventory files - to diagnose ID mismatches."""
+    beacons_without_pairing_date: list[tuple[str, str]] = field(default_factory=list)
+    """(tracker_id, reason) for trackers carrying no pairing date, where the
+    reason distinguishes no ownership record being found at all from one being
+    found that simply has no pairingDate field - absence of evidence versus
+    evidence of absence."""
     fixes_before_pairing: list[tuple[str, str, str]] = field(default_factory=list)
     """(tracker_id, pairing_date, earliest_fix) where a location fix predates
     the beacon's recorded pairingDate. Worth an examiner's attention: it can
@@ -256,8 +261,39 @@ def discover(root: Path) -> DiscoveryResult:
         tid for tid in fixes_by_tracker if not (trackers[tid].name or trackers[tid].model)
     )
     log.fixes_before_pairing = _fixes_before_pairing(trackers, fixes_by_tracker)
+    log.beacons_without_pairing_date = _missing_pairing_dates(
+        trackers, fixes_by_tracker, metadata_by_tracker
+    )
 
     return DiscoveryResult(trackers=trackers, fixes_by_tracker=fixes_by_tracker, log=log)
+
+
+def _missing_pairing_dates(
+    trackers: dict[str, Tracker],
+    fixes_by_tracker: dict[str, list[LocationFix]],
+    metadata_by_tracker: dict[str, BeaconMetadata],
+) -> list[tuple[str, str]]:
+    """Why each tracker lacks a pairing date, where it lacks one.
+
+    Distinguishes a beacon with no OwnedBeacons/SharedBeacons record at
+    all from one whose record was read but carries no pairingDate field.
+    The two mean different things in a report and should not both render
+    as a blank.
+    """
+    missing = []
+    for tracker_id in fixes_by_tracker:
+        if trackers[tracker_id].pairing_date_utc:
+            continue
+        metadata = metadata_by_tracker.get(tracker_id)
+        if metadata is None:
+            reason = "no OwnedBeacons/SharedBeacons record found for this beacon"
+        else:
+            reason = (
+                f"{metadata.kind} record read but it carries no pairingDate "
+                f"({metadata.source_file})"
+            )
+        missing.append((tracker_id, reason))
+    return sorted(missing)
 
 
 def _fixes_before_pairing(

@@ -385,7 +385,7 @@ def _tracker_section(
         "<dl class='details'>",
         _detail("Model", tracker.model if tracker else None),
         _detail("Serial number", tracker.serial_number if tracker else None),
-        _detail("Paired", tracker.pairing_date_utc if tracker else None),
+        _detail_paired(tracker_id, tracker, result),
         _detail("Battery level", _battery(tracker)),
         _detail("First fix", fixes[0].timestamp_utc if fixes else None),
         _detail("Last fix", fixes[-1].timestamp_utc if fixes else None),
@@ -450,6 +450,15 @@ def _run_log_section(result: DiscoveryResult) -> str:
         out.append(f"<li>{_esc(label)}: {value}</li>")
     out.append("</ul>")
 
+    if log.beacons_without_pairing_date:
+        out.append(
+            "<h3>Trackers with no pairing date</h3><ul>"
+            + "".join(
+                f"<li>{_esc(tid)} &mdash; {_esc(reason)}</li>"
+                for tid, reason in log.beacons_without_pairing_date
+            )
+            + "</ul>"
+        )
     if log.fixes_before_pairing:
         out.append(
             "<h3 class='warn'>Location fix predating the recorded pairing date</h3>"
@@ -492,6 +501,28 @@ def _run_log_section(result: DiscoveryResult) -> str:
 
     out.append("</div></section>")
     return "".join(out)
+
+
+def _detail_paired(
+    tracker_id: str, tracker: Optional[Tracker], result: DiscoveryResult
+) -> str:
+    """Pairing date, or why there isn't one.
+
+    A beacon with no ownership record at all and one whose record simply
+    omits pairingDate mean different things; rendering both as a blank
+    would hide that.
+    """
+    if tracker and tracker.pairing_date_utc:
+        return _detail("Paired", tracker.pairing_date_utc)
+    reason = next(
+        (r for tid, r in result.log.beacons_without_pairing_date if tid == tracker_id), None
+    )
+    if reason:
+        return (
+            f"<div><dt>Paired</dt><dd class='none' title='{_esc(reason)}'>"
+            f"not recorded &mdash; {_esc(reason.split(' (')[0])}</dd></div>"
+        )
+    return _detail("Paired", None)
 
 
 def _battery(tracker: Optional[Tracker]) -> Optional[str]:

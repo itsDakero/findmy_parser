@@ -111,6 +111,12 @@ def _run_log_text(result: DiscoveryResult) -> str:
         lines.append("tracker name sources (tracker -> where the name came from):")
         lines.extend(f"  {tid} -> {src}" for tid, src in sorted(result.log.name_sources.items()))
         lines.append("")
+    if result.log.beacons_without_pairing_date:
+        lines.append("trackers with no pairing date, and why:")
+        lines.extend(
+            f"  {tid}: {reason}" for tid, reason in result.log.beacons_without_pairing_date
+        )
+        lines.append("")
     if result.log.fixes_before_pairing:
         lines.append("trackers with a location fix PREDATING their recorded pairingDate:")
         lines.extend(

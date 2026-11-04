@@ -289,3 +289,51 @@ def test_no_flag_without_a_pairing_date(tmp_path):
         },
     )
     assert discover(tmp_path).log.fixes_before_pairing == []
+
+
+def test_distinguishes_why_a_pairing_date_is_missing(tmp_path):
+    """No ownership record at all, versus a record that omits pairingDate,
+    mean different things in a report and must not both render as blank."""
+    import datetime
+
+    with_record = "AAAAAAAA-074C-4DB1-8190-ECF04E6F46C8"
+    without_record = "BBBBBBBB-074C-4DB1-8190-ECF04E6F46C8"
+
+    _write_bplist(
+        tmp_path / "OwnedBeacons" / f"{with_record}_1.record" / f"{with_record}.record.plist",
+        {"identifier": with_record, "model": "AirTag", "batteryLevel": 0.5},
+    )
+    for uuid in (with_record, without_record):
+        _write_bplist(
+            tmp_path / "BeaconEstimatedLocation" / uuid / "f_1.record" / "f.record.plist",
+            {
+                "associatedBeacon": uuid,
+                "latitude": 51.5,
+                "longitude": -0.1,
+                "timestamp": datetime.datetime(2026, 6, 15, 9),
+            },
+        )
+
+    reasons = dict(discover(tmp_path).log.beacons_without_pairing_date)
+    assert "carries no pairingDate" in reasons[with_record]
+    assert "no OwnedBeacons/SharedBeacons record found" in reasons[without_record]
+
+
+def test_no_missing_pairing_entry_when_date_present(tmp_path):
+    import datetime
+
+    uuid = "CCCCCCCC-074C-4DB1-8190-ECF04E6F46C8"
+    _write_bplist(
+        tmp_path / "OwnedBeacons" / f"{uuid}_1.record" / f"{uuid}.record.plist",
+        {"identifier": uuid, "pairingDate": datetime.datetime(2026, 1, 1, 12)},
+    )
+    _write_bplist(
+        tmp_path / "BeaconEstimatedLocation" / uuid / "f_1.record" / "f.record.plist",
+        {
+            "associatedBeacon": uuid,
+            "latitude": 51.5,
+            "longitude": -0.1,
+            "timestamp": datetime.datetime(2026, 6, 15, 9),
+        },
+    )
+    assert discover(tmp_path).log.beacons_without_pairing_date == []
