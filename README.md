@@ -80,6 +80,10 @@ pip install -e .
 
 ## Usage
 
+**[Step-by-step guide with screenshots: `docs/USAGE.md`](docs/USAGE.md)** —
+installing (including offline), what to point it at, reading the report,
+and what each flag in it means.
+
 ```sh
 findmy-parser /path/to/extraction_or_export
 ```
@@ -116,7 +120,7 @@ First, run the structural diagnostic — it reports what the input actually
 is and works out whether a name join is even possible:
 
 ```sh
-python3 -m findmy_parser.diagnose /path/to/extraction_or_export
+findmy-parser-diagnose /path/to/extraction_or_export
 ```
 
 It prints, per file, the detected format, top-level type, key names, and

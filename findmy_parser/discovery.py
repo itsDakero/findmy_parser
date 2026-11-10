@@ -207,6 +207,11 @@ def discover(root: Path) -> DiscoveryResult:
     fixes_by_tracker: dict[str, list[LocationFix]] = {}
     seen_hashes: dict[str, str] = {}
     metadata_by_tracker: dict[str, BeaconMetadata] = {}
+    # Ownership records only (OwnedBeacons/SharedBeacons). pairingDate lives
+    # in these and never in a BeaconNamingRecord, so "why is there no pairing
+    # date" has to be answered from this map rather than from the
+    # highest-priority record of any kind.
+    ownership_by_tracker: dict[str, BeaconMetadata] = {}
 
     for path in record_paths:
         hint = resolve_tracker_uuid(path)
@@ -229,6 +234,10 @@ def discover(root: Path) -> DiscoveryResult:
                 existing = metadata_by_tracker.get(metadata.tracker_id)
                 if existing is None or metadata.priority > existing.priority:
                     metadata_by_tracker[metadata.tracker_id] = metadata
+                if kind in ("owned_beacon", "shared_beacon"):
+                    owner = ownership_by_tracker.get(metadata.tracker_id)
+                    if owner is None or metadata.priority > owner.priority:
+                        ownership_by_tracker[metadata.tracker_id] = metadata
             continue
 
         try:
@@ -262,7 +271,7 @@ def discover(root: Path) -> DiscoveryResult:
     )
     log.fixes_before_pairing = _fixes_before_pairing(trackers, fixes_by_tracker)
     log.beacons_without_pairing_date = _missing_pairing_dates(
-        trackers, fixes_by_tracker, metadata_by_tracker
+        trackers, fixes_by_tracker, ownership_by_tracker
     )
 
     return DiscoveryResult(trackers=trackers, fixes_by_tracker=fixes_by_tracker, log=log)
@@ -271,7 +280,7 @@ def discover(root: Path) -> DiscoveryResult:
 def _missing_pairing_dates(
     trackers: dict[str, Tracker],
     fixes_by_tracker: dict[str, list[LocationFix]],
-    metadata_by_tracker: dict[str, BeaconMetadata],
+    ownership_by_tracker: dict[str, BeaconMetadata],
 ) -> list[tuple[str, str]]:
     """Why each tracker lacks a pairing date, where it lacks one.
 
@@ -279,12 +288,17 @@ def _missing_pairing_dates(
     all from one whose record was read but carries no pairingDate field.
     The two mean different things in a report and should not both render
     as a blank.
+
+    Only ownership records answer this. A BeaconNamingRecord is not
+    expected to carry a pairingDate at all, so naming it here would
+    report a record that was never a candidate and leave the examiner
+    believing the ownership record had been checked.
     """
     missing = []
     for tracker_id in fixes_by_tracker:
         if trackers[tracker_id].pairing_date_utc:
             continue
-        metadata = metadata_by_tracker.get(tracker_id)
+        metadata = ownership_by_tracker.get(tracker_id)
         if metadata is None:
             reason = "no OwnedBeacons/SharedBeacons record found for this beacon"
         else:

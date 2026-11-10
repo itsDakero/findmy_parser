@@ -337,3 +337,35 @@ def test_no_missing_pairing_entry_when_date_present(tmp_path):
         },
     )
     assert discover(tmp_path).log.beacons_without_pairing_date == []
+
+
+def test_missing_pairing_reason_names_the_ownership_record_not_the_naming_record(tmp_path):
+    """A BeaconNamingRecord outranks an OwnedBeacons record as a name source,
+    but it is not where pairingDate lives. Naming it as the reason would
+    report a record that was never a candidate, and would leave the examiner
+    believing the ownership record had been checked when it had not."""
+    import datetime
+
+    uuid = "DDDDDDDD-074C-4DB1-8190-ECF04E6F46C8"
+    _write_bplist(
+        tmp_path / "OwnedBeacons" / f"{uuid}_1.record" / f"{uuid}.record.plist",
+        {"identifier": uuid, "model": "AirPods Pro", "batteryLevel": 0.6},
+    )
+    _write_bplist(
+        tmp_path / "BeaconNamingRecord" / uuid / "naming.record",
+        {"associatedBeacon": uuid, "name": "AirPods Pro"},
+    )
+    _write_bplist(
+        tmp_path / "BeaconEstimatedLocation" / uuid / "f_1.record" / "f.record.plist",
+        {
+            "associatedBeacon": uuid,
+            "latitude": 51.5,
+            "longitude": -0.1,
+            "timestamp": datetime.datetime(2026, 6, 15, 9),
+        },
+    )
+
+    reason = dict(discover(tmp_path).log.beacons_without_pairing_date)[uuid]
+    assert "owned_beacon" in reason
+    assert "naming_record" not in reason
+    assert "OwnedBeacons" in reason

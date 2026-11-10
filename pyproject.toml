@@ -20,6 +20,10 @@ dependencies = []
 
 [project.scripts]
 findmy-parser = "findmy_parser.cli:main"
+# diagnose.py's argparse already calls itself findmy-parser-diagnose in its
+# own --help, so register it under that name rather than leaving the help
+# text naming a command that does not exist.
+findmy-parser-diagnose = "findmy_parser.diagnose:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=7"]
