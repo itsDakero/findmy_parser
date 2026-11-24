@@ -225,6 +225,32 @@ artifact module (for contribution upstream to
 module currently only parses `FMIPAccounts.plist` and does not cover
 this data. See the module's `__artifacts_v2__` docstring for details.
 
+## Research tool: searchpartyd key probe
+
+`tools/searchpartyd_keyprobe.py` is for working out how iOS encrypts the
+searchpartyd `.record` files, so that iLEAPP (or this tool) could decrypt
+them from the keychain the way iLEAPP now does for the fmipcore caches.
+Published work covers macOS only: an AES-GCM key in a keychain item
+labelled `BeaconStore`, with each record a `[nonce, tag, ciphertext]` plist
+array. The iOS equivalent is not established.
+
+```sh
+python tools/searchpartyd_keyprobe.py "PA Export" --keychain backup_keychain_v2.plist
+```
+
+It reports the record layout (standard library only), the keychain entries
+that look Find My related, and whether any of their keys verifies against
+sample records under AES-GCM or ChaCha20-Poly1305, checking the plaintext
+against Physical Analyzer's decrypted copy. It prints shapes, lengths and
+verdicts, never key material or record contents, so its output is safe to
+share. The trial-decryption stage, and reading a UFED encrypted keychain,
+need `pycryptodome` or `cryptography`; neither is a dependency of
+`findmy_parser`, and without one those stages are skipped.
+
+The UFED keychain reader follows the structure iLEAPP's
+`scripts/ios_keychain.py` reads. It was tested against a synthetic keychain
+built to that structure, not against a real one.
+
 ## License
 
 MIT
