@@ -45,10 +45,15 @@ __artifacts_v2__ = {
                  "as positionless rows. Those folders are where a beacon's friendly name is "
                  "expected to live, keyed by the same UUID, but their field names are not "
                  "established and no name is joined here. "
-                 "On-device these caches are encrypted: records whose top level holds an "
-                 "encryptedData and a signature key are logged and skipped, as findMyCaches.py "
-                 "does for the fmipcore files, so 0 rows is not evidence that nothing was "
-                 "recorded. "
+                 "On-device these records are encrypted: the file is a plist array of opaque "
+                 "values rather than a dictionary, and is logged as encrypted and skipped. Rows "
+                 "come only from decrypted copies, such as those a Cellebrite Physical Analyzer "
+                 "export writes beside each record, so on a file system extraction alone 0 rows "
+                 "is expected and is not evidence that nothing was recorded. Unlike the fmipcore "
+                 "caches, no decryption of these records from the keychain is implemented: the "
+                 "published work found covers macOS only (an AES-GCM key held in a keychain item "
+                 "labelled BeaconStore), and the iOS keychain item and record layout were not "
+                 "established. "
                  "sample_data is empty because this module has not been run against the test "
                  "image corpus; the one record it was developed against was a single file "
                  "supplied separately, not a corpus image.",
@@ -124,6 +129,13 @@ def findMyBeaconLocations(context):
             continue
 
         record = get_plist_file_content(file_found)
+        if isinstance(record, list):
+            # The on-device form: a plist array of opaque values (on macOS,
+            # nonce, AES-GCM tag and ciphertext). It read fine as a plist; it
+            # is encrypted, which is a different fact from being unreadable.
+            logfunc(f'{file_found} is the encrypted on-device form '
+                    f'(a {len(record)}-element array); not read')
+            continue
         if not isinstance(record, dict) or not record:
             logfunc(f'{file_found} could not be read as a plist; skipped')
             continue
