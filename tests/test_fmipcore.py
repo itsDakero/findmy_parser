@@ -247,3 +247,46 @@ def test_both_identifier_and_bauuid_retained_as_aliases():
     tracker = trackers[0]
     assert tracker.identifier == "ITEM-ID"
     assert tracker.alt_identifiers == ("BEACON-UUID-2",)
+
+
+def test_null_placeholder_text_is_treated_as_absent():
+    """Decrypted caches carry the text "$null" where the JSON form holds
+    null. It must not surface as a serial number, emoji or identifier alias,
+    but must still be preserved verbatim in raw."""
+    import plistlib
+
+    from findmy_parser.fmipcore import parse_inventory_bytes
+
+    uuid = "4F2A9C10-7B3E-4A12-9D80-1C5E6B9A4D33"
+    data = plistlib.dumps(
+        [
+            {
+                "identifier": uuid,
+                "baUUID": "$null",
+                "name": "Keys",
+                "emoji": "$null",
+                "serialNumber": "$null",
+                "productType": {"productInformation": {"modelName": "AirTag"}},
+            }
+        ],
+        fmt=plistlib.FMT_BINARY,
+    )
+    (tracker,) = parse_inventory_bytes(data, source_file="Items.data.decrypted")
+    assert tracker.name == "Keys"
+    assert tracker.emoji is None
+    assert tracker.serial_number is None
+    assert tracker.alt_identifiers == ()
+    assert tracker.raw["serialNumber"] == "$null"
+
+
+def test_null_placeholder_identifier_yields_no_tracker():
+    """An entry whose only identifier is "$null" has no usable ID, and must
+    not become a tracker keyed by the placeholder."""
+    import plistlib
+
+    from findmy_parser.fmipcore import parse_inventory_bytes
+
+    data = plistlib.dumps(
+        [{"baUUID": "$null", "name": "Demo iPhone"}], fmt=plistlib.FMT_BINARY
+    )
+    assert parse_inventory_bytes(data, source_file="Devices.data.decrypted") == []

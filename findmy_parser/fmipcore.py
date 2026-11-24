@@ -219,7 +219,7 @@ def _tracker_from_entry(entry: dict, *, source_kind: str, source_file: str) -> O
     alt_identifiers = tuple(
         str(entry[key])
         for key in _IDENTIFIER_KEYS
-        if key in entry and entry[key] is not None and str(entry[key]) != str(identifier)
+        if key in entry and not _is_absent(entry[key]) and str(entry[key]) != str(identifier)
     )
 
     location = _first(entry, _LOCATION_KEYS)
@@ -255,9 +255,23 @@ def _extract_model(entry: dict) -> Optional[str]:
     return _first(entry, _FLAT_MODEL_FALLBACK_KEYS)
 
 
+# Decrypted fmipcore plists carry the text "$null" where the JSON form of
+# the same cache holds null (observed by iLEAPP across its test corpus when
+# decrypting these files with the keychain key; scripts/findmy_cache.py,
+# NULL_TEXT). Read as a value it would report a serial number or emoji of
+# "$null", and as an identifier it would alias every such device to one
+# shared fake ID. It is treated as absent for field mapping only; Tracker.raw
+# keeps the entry exactly as stored.
+NULL_PLACEHOLDER = "$null"
+
+
+def _is_absent(value: Any) -> bool:
+    return value is None or value == NULL_PLACEHOLDER
+
+
 def _first(entry: dict, keys: tuple[str, ...]) -> Any:
     for key in keys:
-        if key in entry and entry[key] is not None:
+        if key in entry and not _is_absent(entry[key]):
             return entry[key]
     return None
 

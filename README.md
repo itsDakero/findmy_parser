@@ -177,7 +177,7 @@ mapped to a `Tracker` field: `address`, `batteryStatus`, `capabilities`,
 `isAppleAudioAccessory`, `isAppleItem`, `isFirmwareUpdateMandatory`,
 `lostModeMetadata`, `owner`, `partInfo`, `role`, `systemVersion`,
 `safeLocations`, `rangeDistanceInMeters` (all preserved on `Tracker.raw`).
-`emoji` was not among that sample's keys. `Devices.data`'s exact schema
+`emoji` was not among that sample's keys. Decrypted caches can carry the text `$null` where the JSON form holds null (observed by iLEAPP across its test corpus); it is treated as absent when mapping fields, so it never appears as a serial number, emoji or identifier, and is kept verbatim on `Tracker.raw`. `Devices.data`'s exact schema
 is still unconfirmed — its field mapping keeps a flat-key fallback
 (`model`/`deviceModel`/`modelDisplayName`) as a guess; see
 `findmy_parser/fmipcore.py` for the exact key lists used.
