@@ -65,29 +65,51 @@ folder of your choosing. Work from a copy anyway, as you normally would.
 
 ## 2. Install
 
-On a machine with internet access:
+### Offline (a forensic workstation): no install needed
 
-```sh
-pip install -e .
+Download the repository as a ZIP, copy it across and extract it. Then
+run everything **from inside the extracted folder**, using `python -m`:
+
+```bat
+cd "C:\Tools\findmy_parser-claude-test-fixture-schema-6zf48e"
+python -m findmy_parser.cli "D:\Case\PA Export" --output-dir "D:\Case\Report"
 ```
 
-**Installing offline** (the usual case on a forensic workstation):
-download the repository as a ZIP, copy it across, extract it, then from
-inside the extracted folder run the same command. There are no
-dependencies to fetch, so this works with no network.
+Nothing is installed and nothing is fetched. The parser uses only the
+Python standard library. The ZIP's folder name depends on the branch it
+was downloaded from; use whatever name it extracted as.
 
-```sh
-cd findmy_parser-main
-pip install -e .
+Two things to know:
+
+- The `python -m` commands only work from inside that folder. Run from
+  anywhere else, Python reports `No module named 'findmy_parser'`.
+- Pass `--output-dir`. Otherwise the output goes in a
+  `findmy_parser_output` folder inside the tool's folder.
+
+If typing `python` opens the Microsoft Store or isn't recognised, use
+`py` instead (the Windows Python launcher).
+
+Every command in this guide works this way. Replace `findmy-parser` with
+`python -m findmy_parser.cli`, and `findmy-parser-diagnose` with
+`python -m findmy_parser.diagnose`.
+
+### Installing it as a command (optional)
+
+With internet access, `pip install .` from inside the extracted folder
+gives you the `findmy-parser` and `findmy-parser-diagnose` commands
+anywhere.
+
+**Offline, plain `pip install .` fails**, even though the parser has no
+dependencies: pip downloads `setuptools` to build the package. To build
+with the `setuptools` already on the machine instead:
+
+```bat
+pip install --no-index --no-build-isolation .
 ```
 
-That gives you two commands: `findmy-parser` and
-`findmy-parser-diagnose`.
-
-If you would rather not install anything at all, every command in this
-guide also works as a module from inside the extracted folder — replace
-`findmy-parser` with `python -m findmy_parser.cli`, and
-`findmy-parser-diagnose` with `python -m findmy_parser.diagnose`.
+This works only if `setuptools` is installed. Python 3.12 and later no
+longer include it by default, so on a fresh install the no-install route
+above is simpler.
 
 ---
 

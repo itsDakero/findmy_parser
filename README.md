@@ -74,9 +74,13 @@ deduplicated by content hash.
 
 ## Install
 
-```sh
-pip install -e .
-```
+No install is needed: from inside the extracted folder, run
+`python -m findmy_parser.cli PATH`. The parser uses only the standard
+library. To install it as a command, run `pip install .`. Offline,
+`pip install .` fails, because pip downloads `setuptools` to build the
+package; use `pip install --no-index --no-build-isolation .` instead,
+which needs `setuptools` already installed. See
+[`docs/USAGE.md`](docs/USAGE.md#2-install).
 
 ## Usage
 
